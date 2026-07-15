@@ -32,7 +32,8 @@ class BackgroundTaskTests(unittest.TestCase):
 
         self.assertEqual(result, [42])
         self.assertFalse(window.threads)
-        window.close()
+        window.deleteLater()
+        application.processEvents()
 
 
 if __name__ == "__main__":

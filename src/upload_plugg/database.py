@@ -4,6 +4,7 @@ import csv
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -72,7 +73,7 @@ class Database:
 
     def migrate(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             connection.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
             row = connection.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
             if row is None:
@@ -115,7 +116,7 @@ class Database:
             item.preset_name,
             result.error,
         )
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             cursor = connection.execute(
                 """
                 INSERT INTO uploads (
@@ -144,7 +145,7 @@ class Database:
         if channel_id:
             params.append(channel_id)
         query = f"SELECT * FROM uploads WHERE ({' OR '.join(clauses)}){channel_clause} ORDER BY id DESC"
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
     def list_uploads(self, limit: int = 500, status: str = "") -> list[dict[str, Any]]:
@@ -155,18 +156,18 @@ class Database:
             params.append(status)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
     def set_end_screen_done(self, upload_id: int, done: bool) -> None:
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             connection.execute(
                 "UPDATE uploads SET end_screen_done = ? WHERE id = ?", (int(done), upload_id)
             )
 
     def save_queue(self, items: Iterable[UploadItem]) -> None:
         payload = json.dumps([item.to_dict() for item in items], ensure_ascii=False)
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO queue_snapshots(id, payload_json, updated_at) VALUES(1, ?, CURRENT_TIMESTAMP)
@@ -177,7 +178,7 @@ class Database:
             )
 
     def load_queue(self) -> list[UploadItem]:
-        with self._lock, self.connect() as connection:
+        with self._lock, closing(self.connect()) as connection, connection:
             row = connection.execute("SELECT payload_json FROM queue_snapshots WHERE id=1").fetchone()
         if not row:
             return []
@@ -197,4 +198,3 @@ class Database:
             writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
-
