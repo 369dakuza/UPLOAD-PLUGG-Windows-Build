@@ -1,5 +1,5 @@
 #define MyAppName "UPLOAD PLUGG"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Dakuza"
 #define MyAppExeName "UPLOAD PLUGG.exe"
 
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\UPLOAD PLUGG
 DefaultGroupName=UPLOAD PLUGG
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=UPLOAD_PLUGG_1.0.0_Setup
+OutputBaseFilename=UPLOAD_PLUGG_1.0.1_Update
 SetupIconFile=..\resources\upload_plugg.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName=UPLOAD PLUGG
@@ -28,7 +28,7 @@ RestartApplications=no
 VersionInfoCompany=Dakuza
 VersionInfoDescription=UPLOAD PLUGG Installer
 VersionInfoProductName=UPLOAD PLUGG
-VersionInfoProductVersion=1.0.0
+VersionInfoProductVersion=1.0.1
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -50,4 +50,3 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch UPLOAD PLUGG"; Flags: no
 Type: filesandordirs; Name: "{app}"
 
 ; User history and settings in %LOCALAPPDATA%\UploadPlugg are intentionally preserved.
-

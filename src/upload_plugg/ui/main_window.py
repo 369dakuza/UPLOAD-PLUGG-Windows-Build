@@ -8,6 +8,7 @@ from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QThread, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -65,7 +66,12 @@ class MainWindow(QMainWindow):
         self.credentials = None
         self.channel_id = settings.data["channel"].get("id", "")
         self.channel_name = settings.data["channel"].get("name", "")
-        self.threads: set[QThread] = set()
+        # Keep both QThread and worker alive until the task has really finished.
+        # Without the worker reference, PySide may garbage-collect it before the
+        # thread starts. That leaves every background action apparently inert.
+        self.threads: dict[QThread, FunctionWorker] = {}
+        self.internet_check_running = False
+        self.online: bool | None = None
         self.upload_thread: QThread | None = None
         self.upload_worker: UploadQueueWorker | None = None
         self.page_animation: QPropertyAnimation | None = None
@@ -248,16 +254,39 @@ class MainWindow(QMainWindow):
             worker.failed.connect(failed)
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
+        worker.finished.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: self.threads.discard(thread))
-        self.threads.add(thread)
+        thread.finished.connect(lambda current=thread: self.threads.pop(current, None))
+        self.threads[thread] = worker
         thread.start()
 
     def connect_channel(self) -> None:
         if self.upload_thread and self.upload_thread.isRunning():
             QMessageBox.warning(self, APP_NAME, "Wait until the active upload queue finishes.")
             return
+        if not self.auth.client_configured():
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Google OAuth Desktop Client JSON",
+                "",
+                "Google OAuth JSON (*.json)",
+            )
+            if not selected:
+                QMessageBox.information(
+                    self,
+                    APP_NAME,
+                    "To connect YouTube, select the OAuth Desktop Client JSON downloaded from "
+                    "Google Cloud.\n\nIn Google Cloud, enable YouTube Data API v3, create an "
+                    "OAuth Client ID for a Desktop app, download its JSON file, then click "
+                    "Connect YouTube Channel again.",
+                )
+                return
+            try:
+                self.auth.install_client_secret(Path(selected))
+            except Exception as exc:
+                QMessageBox.critical(self, APP_NAME, f"The selected Google OAuth file is invalid:\n{exc}")
+                return
         self.connect_button.setEnabled(False)
         self.connection_label.setText("● Connecting…")
 
@@ -319,9 +348,10 @@ class MainWindow(QMainWindow):
         if self.credentials is None:
             QMessageBox.critical(self, APP_NAME, "Connect and confirm a YouTube channel before uploading.")
             return
-        if not internet_available():
-            QMessageBox.critical(self, APP_NAME, "Internet is unavailable. Local preparation and Dry Run remain available.")
-            return
+        # Do not block a real upload because a background connectivity probe was
+        # filtered by a firewall. The YouTube request itself remains authoritative.
+        if self.online is False:
+            self.logger.warning("Starting upload while connectivity status is unconfirmed")
         if self.upload_thread and self.upload_thread.isRunning():
             QMessageBox.warning(self, APP_NAME, "An upload queue is already active.")
             return
@@ -365,9 +395,18 @@ class MainWindow(QMainWindow):
             self.upload_worker.cancel()
 
     def refresh_internet(self) -> None:
-        self.run_task(internet_available, (), {"done": self.internet_done, "failed": lambda _message: self.internet_done(False)})
+        if self.internet_check_running:
+            return
+        self.internet_check_running = True
+        self.run_task(
+            internet_available,
+            (),
+            {"done": self.internet_done, "failed": lambda _message: self.internet_done(False)},
+        )
 
     def internet_done(self, online: bool) -> None:
+        self.internet_check_running = False
+        self.online = bool(online)
         self.internet_label.setText("● Online" if online else "● Offline — local tools available")
         self.internet_label.setObjectName("statusGood" if online else "statusWarn")
         self.internet_label.style().unpolish(self.internet_label)

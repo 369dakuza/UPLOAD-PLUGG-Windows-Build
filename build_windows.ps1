@@ -21,7 +21,7 @@ $env:PYTHONPATH = "$ProjectRoot\src"
 & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -v
 & ".\.venv\Scripts\pyinstaller.exe" --noconfirm --clean "UPLOAD_PLUGG.spec"
 
-$PortableZip = Join-Path $ProjectRoot "dist\UPLOAD_PLUGG_1.0.0_Portable.zip"
+$PortableZip = Join-Path $ProjectRoot "dist\UPLOAD_PLUGG_1.0.1_Portable.zip"
 if (Test-Path $PortableZip) { Remove-Item $PortableZip -Force }
 Compress-Archive -Path "dist\UPLOAD PLUGG\*" -DestinationPath $PortableZip
 

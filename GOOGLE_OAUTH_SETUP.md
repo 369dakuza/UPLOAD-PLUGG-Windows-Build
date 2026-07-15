@@ -12,8 +12,8 @@ UPLOAD PLUGG uses the official installed-application OAuth flow and the minimum 
 6. Open **Clients / Credentials → Create credentials → OAuth client ID**.
 7. Choose **Desktop app**. Do not choose Web application.
 8. Download the client JSON file.
-9. Rename it exactly to `client_secret.json`.
-10. Place it at `%LOCALAPPDATA%\UploadPlugg\config\client_secret.json`.
+9. In UPLOAD PLUGG, click **Connect YouTube Channel**.
+10. Select the downloaded JSON file when the file picker opens. UPLOAD PLUGG validates and stores it in the correct local configuration folder automatically.
 
 The included `config/oauth_client.example.json` documents the shape only; it is not a working credential and must never be uploaded to a public repository with real secrets.
 
@@ -41,4 +41,3 @@ Google states that videos uploaded by unverified API projects created after 28 J
 - **redirect_uri_mismatch:** recreate the credential as a Desktop app and keep `http://localhost` in its downloaded configuration.
 - **No YouTube channel:** create a YouTube channel for that Google account or authorize the correct Brand Account.
 - **Token refresh failed:** disconnect, delete/recreate the OAuth client if necessary, then reconnect.
-

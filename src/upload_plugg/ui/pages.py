@@ -1019,7 +1019,11 @@ class SettingsPage(QWidget):
         connection_layout = QHBoxLayout(connection)
         connect = QPushButton("Connect YouTube Channel"); connect.setProperty("accent", True); connect.clicked.connect(self.connect_requested.emit)
         disconnect = QPushButton("Disconnect Channel"); disconnect.clicked.connect(self.disconnect_requested.emit)
-        connection_layout.addWidget(connect); connection_layout.addWidget(disconnect); connection_layout.addStretch()
+        google_setup = QPushButton("Open Google OAuth Setup")
+        google_setup.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://console.cloud.google.com/apis/credentials"))
+        )
+        connection_layout.addWidget(connect); connection_layout.addWidget(disconnect); connection_layout.addWidget(google_setup); connection_layout.addStretch()
         root.addWidget(connection)
         storage = QGroupBox("Local Data")
         storage_layout = QHBoxLayout(storage)

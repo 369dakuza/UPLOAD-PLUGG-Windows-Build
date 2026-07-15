@@ -22,8 +22,8 @@ The script creates `.venv`, installs pinned dependency ranges, generates the ico
 Outputs:
 
 - `dist\UPLOAD PLUGG\UPLOAD PLUGG.exe` — standalone directory build
-- `dist\UPLOAD_PLUGG_1.0.0_Portable.zip` — portable package
-- `dist\UPLOAD_PLUGG_1.0.0_Setup.exe` — normal installer
+- `dist\UPLOAD_PLUGG_1.0.1_Portable.zip` — portable package
+- `dist\UPLOAD_PLUGG_1.0.1_Update.exe` — installer and in-place updater
 
 To omit Inno Setup while testing the executable:
 
@@ -49,4 +49,3 @@ $env:PYTHONPATH = "$PWD\src"
 PyInstaller creates an onedir application because it starts faster and is less likely to trigger antivirus heuristics than a self-extracting one-file executable. The installer places the complete directory under Program Files and creates the normal uninstall record, Start Menu entry and optional desktop shortcut. Runtime configuration stays under `%LOCALAPPDATA%\UploadPlugg`.
 
 Before a public release, build in a clean Windows virtual machine, review third-party licenses, sign both the executable and installer, scan the artifacts, and perform the manual checklist in `TEST_PLAN.md`.
-

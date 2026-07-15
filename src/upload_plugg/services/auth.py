@@ -24,10 +24,31 @@ class OAuthManager:
     def __init__(self, client_secret_path: Path):
         self.client_secret_path = client_secret_path
 
+    def client_configured(self) -> bool:
+        return self.client_secret_path.is_file()
+
+    def install_client_secret(self, source: Path) -> Path:
+        try:
+            payload = json.loads(Path(source).read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise AuthenticationError(f"Could not read the JSON file: {exc}") from exc
+        installed = payload.get("installed") if isinstance(payload, dict) else None
+        required = ("client_id", "client_secret", "auth_uri", "token_uri")
+        if not isinstance(installed, dict) or any(not installed.get(key) for key in required):
+            raise AuthenticationError(
+                "Choose an OAuth Client ID JSON created for a Google Desktop app."
+            )
+        self.client_secret_path.parent.mkdir(parents=True, exist_ok=True)
+        self.client_secret_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        return self.client_secret_path
+
     def connect(self) -> Credentials:
         if not self.client_secret_path.is_file():
             raise AuthenticationError(
-                f"OAuth credentials are missing. Place client_secret.json in {self.client_secret_path.parent}"
+                "Google OAuth credentials are missing. Click Connect YouTube Channel and "
+                "select the Desktop Client JSON downloaded from Google Cloud."
             )
         flow = InstalledAppFlow.from_client_secrets_file(
             str(self.client_secret_path), [YOUTUBE_UPLOAD_SCOPE]
@@ -64,4 +85,3 @@ class OAuthManager:
 
     def _save(self, credentials: Credentials) -> None:
         keyring.set_password(SERVICE_NAME, TOKEN_ACCOUNT, credentials.to_json())
-

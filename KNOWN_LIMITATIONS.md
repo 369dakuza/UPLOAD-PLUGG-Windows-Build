@@ -11,7 +11,7 @@
 ## First release boundaries
 
 - One connected channel is supported at a time.
-- Uploads are sequential. Two-upload parallel mode is intentionally not exposed in 1.0.0 because sequential operation is safer for quota, retries and creator review.
+- Uploads are sequential. Two-upload parallel mode is intentionally not exposed in 1.0.x because sequential operation is safer for quota, retries and creator review.
 - Video folders are scanned only at their top level; subfolders are not included.
 - "Windows Explorer order" is not a stable filesystem concept. Natural numeric order is the default, with explicit name/date/manual choices available.
 - The thumbnail crop keeps a configurable center strategy but does not perform AI subject detection.
@@ -21,4 +21,3 @@
 ## Environment verification
 
 Core logic tests run cross-platform. The supplied development environment is Linux and cannot perform a real Windows installer build, system-tray notification verification, Windows Credential Manager test, DPAPI behavior check or `SetThreadExecutionState` check. OAuth and live uploads also require the user's private credential and channel. These are covered by the opt-in manual plan rather than falsely reported as passed.
-

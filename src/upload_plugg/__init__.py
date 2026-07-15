@@ -1,6 +1,5 @@
 """UPLOAD PLUGG application package."""
 
 APP_NAME = "UPLOAD PLUGG"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 CREATOR_CREDIT = "Powered by: Dakuza"
-

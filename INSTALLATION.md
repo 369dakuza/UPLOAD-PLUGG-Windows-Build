@@ -2,7 +2,7 @@
 
 ## Normal installer
 
-1. Copy `UPLOAD_PLUGG_1.0.0_Setup.exe` to the Windows 10 64-bit computer.
+1. Copy `UPLOAD_PLUGG_1.0.1_Update.exe` to the Windows 10 64-bit computer.
 2. Double-click it and approve the Windows administrator prompt.
 3. Keep the default destination `C:\Program Files\UPLOAD PLUGG`.
 4. Optionally enable the desktop shortcut.
@@ -14,7 +14,7 @@ If Windows SmartScreen appears for an unsigned private build, verify that the in
 
 ## Portable build
 
-Extract `UPLOAD_PLUGG_1.0.0_Portable.zip` into a normal writable folder and start `UPLOAD PLUGG.exe`. Do not launch the executable from inside the ZIP. The portable executable still stores personal runtime data in `%LOCALAPPDATA%\UploadPlugg` so updates do not overwrite settings or history.
+Extract `UPLOAD_PLUGG_1.0.1_Portable.zip` into a normal writable folder and start `UPLOAD PLUGG.exe`. Do not launch the executable from inside the ZIP. The portable executable still stores personal runtime data in `%LOCALAPPDATA%\UploadPlugg` so updates do not overwrite settings or history.
 
 ## First launch
 
@@ -33,4 +33,3 @@ Close active uploads, run the newer installer over the current installation, and
 ## Uninstalling
 
 Use **Windows Settings → Apps → UPLOAD PLUGG → Uninstall**. The program files and shortcuts are removed. Personal data in `%LOCALAPPDATA%\UploadPlugg` is intentionally preserved to prevent accidental history loss. Delete that folder manually only after exporting anything you need and disconnecting the channel.
-
