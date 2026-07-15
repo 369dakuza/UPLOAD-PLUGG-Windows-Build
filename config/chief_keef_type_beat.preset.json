@@ -1,0 +1,18 @@
+{
+  "name": "Chief Keef Type Beat",
+  "producer": "Dakuza",
+  "artist": "Chief Keef",
+  "second_artist": "",
+  "title_template": "[FREE] {ARTIST} Type Beat - \"{BEAT_NAME}\"",
+  "description_template": "{BEAT_NAME}\n\nMust credit: {PRODUCER_CREDITS}\n\nReplace this example with your complete YouTube description.",
+  "tags_template": "{ARTIST} type beat, {BEAT_NAME}, {PRODUCER}, {YEAR} type beat",
+  "category_id": "10",
+  "made_for_kids": false,
+  "contains_synthetic_media": false,
+  "credit_separator": "&",
+  "timezone": "Europe/Berlin",
+  "schedule_days": [1, 3, 4, 6],
+  "schedule_time": "18:00",
+  "default_batch_size": 10,
+  "sorting_mode": "natural"
+}

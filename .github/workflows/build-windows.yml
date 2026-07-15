@@ -1,0 +1,60 @@
+name: Build UPLOAD PLUGG Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows EXE and Installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Get project files
+        uses: actions/checkout@v4
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build and test UPLOAD PLUGG
+        shell: powershell
+        run: .\build_windows.ps1
+
+      - name: Verify installer output
+        shell: powershell
+        run: |
+          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.0_Setup.exe")) {
+            throw "The Windows installer was not created."
+          }
+          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.0_Portable.zip")) {
+            throw "The portable Windows package was not created."
+          }
+
+      - name: Upload installable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: UPLOAD_PLUGG_1.0.0_WINDOWS_INSTALLER
+          path: dist/UPLOAD_PLUGG_1.0.0_Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable version
+        uses: actions/upload-artifact@v4
+        with:
+          name: UPLOAD_PLUGG_1.0.0_PORTABLE
+          path: dist/UPLOAD_PLUGG_1.0.0_Portable.zip
+          if-no-files-found: error
+          retention-days: 30
+

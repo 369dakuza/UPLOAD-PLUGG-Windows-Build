@@ -1,0 +1,10 @@
+.venv/
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.log
+config/oauth_client.json
+client_secret*.json
+token*.json
