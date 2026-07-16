@@ -5,7 +5,7 @@ from pathlib import Path
 try:
     from PIL import Image
     from PySide6.QtCore import QEventLoop, QTimer
-    from PySide6.QtGui import QPalette
+    from PySide6.QtGui import QPalette, QPixmap
     from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 
     from upload_plugg.paths import AppPaths
@@ -65,6 +65,11 @@ class BackgroundTaskTests(unittest.TestCase):
             page.solid_color = (12, 34, 56)
             page.crop_x.setValue(75)
             page.crop_y.setValue(25)
+            page.filter_mode.setCurrentIndex(2)
+            page.filter_strength.setValue(80)
+            page.watermark.setText(str(image_path))
+            page.watermark_position.setCurrentIndex(1)
+            page.watermark_size.setValue(65)
 
             options = page.options()
             button_texts = {button.text() for button in page.findChildren(QPushButton)}
@@ -74,8 +79,25 @@ class BackgroundTaskTests(unittest.TestCase):
             self.assertEqual(options.solid_color, (12, 34, 56))
             self.assertEqual(options.crop_x, 0.75)
             self.assertEqual(options.crop_y, 0.25)
+            self.assertEqual(options.color_filter, "red")
+            self.assertEqual(options.filter_strength, 0.8)
+            self.assertEqual(options.watermark_path, str(image_path))
+            self.assertEqual(options.watermark_position, "bottom_left")
+            self.assertEqual(options.watermark_scale, 0.65)
             self.assertIn("New Random Preview", button_texts)
             self.assertIn("Generate Random Thumbnail", button_texts)
+            self.assertIn("Stop Generation", button_texts)
+            self.assertIn("Watermark / Logo", button_texts)
+            self.assertFalse(page.stop_button.isEnabled())
+            preview = page.preview_label
+            preview.resize(640, 400)
+            pixmap = QPixmap(1920, 1080)
+            pixmap.fill()
+            preview.set_preview_pixmap(pixmap)
+            fitted = preview.pixmap()
+            self.assertLessEqual(fitted.width(), preview.contentsRect().width())
+            self.assertLessEqual(fitted.height(), preview.contentsRect().height())
+            self.assertAlmostEqual(fitted.width() / fitted.height(), 16 / 9, places=2)
             page.preview_timer.stop()
             page.deleteLater()
             application.processEvents()

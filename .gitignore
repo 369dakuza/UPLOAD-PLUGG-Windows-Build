@@ -6,5 +6,6 @@ __pycache__/
 .ruff_cache/
 *.log
 config/oauth_client.json
+config/client_secret.json
 client_secret*.json
 token*.json

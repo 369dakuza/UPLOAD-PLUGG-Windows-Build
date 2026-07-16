@@ -4,7 +4,12 @@ import unittest
 from pathlib import Path
 
 from upload_plugg.database import Database
-from upload_plugg.models import LEGACY_AUTOMATIC_TAGS_TEMPLATE, UploadItem, UploadResult
+from upload_plugg.models import (
+    CHIEF_KEEF_DESCRIPTION_TEMPLATE,
+    LEGACY_AUTOMATIC_TAGS_TEMPLATE,
+    UploadItem,
+    UploadResult,
+)
 from upload_plugg.paths import AppPaths
 from upload_plugg.settings import SettingsStore
 
@@ -42,9 +47,38 @@ class StorageTests(unittest.TestCase):
 
             loaded = store.load()
 
-            self.assertEqual(loaded["version"], 2)
+            self.assertEqual(loaded["version"], 3)
             self.assertEqual(loaded["presets"][0]["tags_template"], "")
             self.assertEqual(loaded["presets"][1]["tags_template"], "Chief Keef, Glo Gang")
+
+    def test_chief_keef_description_is_updated_without_changing_other_presets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self.paths(Path(directory))
+            store = SettingsStore(paths)
+            store.path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "presets": [
+                            {
+                                "name": "Chief Keef Type Beat",
+                                "description_template": "Old description",
+                            },
+                            {"name": "Custom", "description_template": "Keep me"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            loaded = store.load()
+
+            self.assertEqual(loaded["version"], 3)
+            self.assertEqual(
+                loaded["presets"][0]["description_template"],
+                CHIEF_KEEF_DESCRIPTION_TEMPLATE,
+            )
+            self.assertEqual(loaded["presets"][1]["description_template"], "Keep me")
 
     def test_database_migration_and_duplicate_detection(self):
         with tempfile.TemporaryDirectory() as directory:

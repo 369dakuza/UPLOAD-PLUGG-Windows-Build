@@ -12,11 +12,11 @@ UPLOAD PLUGG is local-first creator software. It has no analytics endpoint, adve
 - `logs`: rotating diagnostic logs.
 - `exports`: user-created reports, history exports and support bundles.
 
-OAuth tokens are stored through the operating-system keyring under `UPLOAD_PLUGG`, not in `settings.json` or log files. The OAuth client JSON remains in the local config directory and should be treated as private.
+OAuth access and refresh tokens are stored through Windows Credential Locker under `UPLOAD_PLUGG`, not in the install directory, `settings.json` or log files. The OAuth client JSON remains in `%LOCALAPPDATA%\UploadPlugg\config` and should be treated as private. It is covered by repository ignore rules and is never part of a normal source commit.
 
 ## Sent to Google/YouTube
 
-When the user explicitly starts a real upload, the video bytes, title, description, tags, category, audience choice, scheduling metadata and optional thumbnail are sent to Google's official YouTube API endpoints using OAuth. Channel identity is retrieved to confirm the upload destination.
+When the user explicitly starts a real upload, the video bytes, title, description, tags, category, audience choice, scheduling metadata and optional thumbnail are sent to Google's official YouTube API endpoints using OAuth. The application requests `youtube.upload` for those uploads and `youtube.readonly` to retrieve the authorized channel identity and confirm the destination.
 
 No Google password, YouTube password, browser cookie, recovery code or open Opera session is read or stored.
 
@@ -31,4 +31,3 @@ History and Dry Run exports omit OAuth tokens. The support-bundle builder includ
 ## Deletion
 
 Uninstallation preserves the local data folder to prevent accidental loss. To remove everything, first disconnect the channel, export needed records, uninstall, and delete `%LOCALAPPDATA%\UploadPlugg` manually. Revoking UPLOAD PLUGG from the Google Account security page invalidates server-side authorization as well.
-

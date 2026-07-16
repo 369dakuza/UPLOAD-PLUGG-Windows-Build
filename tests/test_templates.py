@@ -27,7 +27,10 @@ class TemplateTests(unittest.TestCase):
                 "#ChiefKeef #ChiefKeefTypeBeat #ChiefKeefTypeBeat"
             )
         )
-        self.assertIn("Must credit: Prod. Dakuza & Stixx", item.description)
+        self.assertIn("Must credit: [Prod. Dakuza & Stixx]", item.description)
+        self.assertIn("www.instagram.com/369dakuza", item.description)
+        self.assertIn("Email: 369dakuza@gmail.com", item.description)
+        self.assertIn("Chief Keef type beat", item.description)
         self.assertEqual(item.tags, [])
 
     def test_custom_youtube_tags_are_used_without_automatic_additions(self):
@@ -50,6 +53,7 @@ class TemplateTests(unittest.TestCase):
             item.description.splitlines()[0],
             "#ChiefKeef #ChiefKeefTypeBeat #ChiefKeefTypeBeat2027",
         )
+        self.assertIn("Chief Keef type beat 2027", item.description)
 
     def test_hashtags_fall_back_to_preset_name_when_artist_is_empty(self):
         self.assertEqual(

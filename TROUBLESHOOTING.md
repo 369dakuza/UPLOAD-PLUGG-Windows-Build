@@ -16,6 +16,12 @@ Follow `GOOGLE_OAUTH_SETUP.md`. The required file is `%LOCALAPPDATA%\UploadPlugg
 
 Allow the localhost callback through Windows Firewall, close stale authorization tabs, keep UPLOAD PLUGG running, and reconnect. Opera may be used automatically when it is the Windows default browser; no existing tab is automated.
 
+## 403 insufficientPermissions after browser login
+
+Older UPLOAD PLUGG versions requested only `youtube.upload`, which cannot read the connected channel with `channels.list(mine=True)`. Install the current update, choose **Disconnect Channel**, then **Connect YouTube Channel** and complete the full browser consent again. Google must show upload access and read-only channel access. Re-selecting the same Client JSON without replacing the old authorization token does not add scopes. The existing Desktop Client JSON remains valid; do not create another OAuth client.
+
+If an access token expires, UPLOAD PLUGG refreshes it automatically. If the refresh token is invalid or revoked, the stored authorization is removed and the application asks for a new browser login.
+
 ## Upload remains private
 
 An unaudited Google API project can be restricted to private uploads. This is a Google policy, not a scheduling bug. Review the project status in Google Cloud and the official YouTube API audit requirements.
@@ -39,4 +45,3 @@ Select a future time, ensure a valid timezone such as `Europe/Berlin`, and confi
 ## Logs and support bundle
 
 Use **Logs** for readable activity and **Settings → Export Support Bundle** for redacted diagnostics. Files are under `%LOCALAPPDATA%\UploadPlugg\logs`. Do not manually add `client_secret.json` or screenshots of Google security pages to a support bundle.
-

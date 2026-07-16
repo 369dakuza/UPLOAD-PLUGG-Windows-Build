@@ -26,10 +26,10 @@ from .. import APP_NAME, APP_VERSION, CREATOR_CREDIT
 from ..database import Database
 from ..models import Preset, UploadItem
 from ..paths import AppPaths
-from ..services.auth import OAuthManager
+from ..services.auth import OAuthManager, REAUTHORIZE_MESSAGE
 from ..services.connectivity import internet_available
 from ..services.support_bundle import create_support_bundle
-from ..services.youtube import YouTubeService
+from ..services.youtube import INSUFFICIENT_PERMISSIONS_MESSAGE, YouTubeService
 from ..settings import SettingsStore
 from .pages import (
     DashboardPage,
@@ -292,6 +292,10 @@ class MainWindow(QMainWindow):
                 return
         self.connect_button.setEnabled(False)
         self.connection_label.setText("● Connecting…")
+        # Never keep using in-memory credentials while a complete reconnect is
+        # underway. OAuthManager.connect also removes the stored token before the
+        # browser flow starts.
+        self._clear_channel_state()
 
         def authorize():
             credentials = self.auth.connect()
@@ -332,7 +336,17 @@ class MainWindow(QMainWindow):
 
     def connection_failed(self, message: str) -> None:
         self.connect_button.setEnabled(True)
-        self.connection_label.setText("● Connection failed")
+        authorization_problem = message in {
+            REAUTHORIZE_MESSAGE,
+            INSUFFICIENT_PERMISSIONS_MESSAGE,
+        }
+        if authorization_problem:
+            self.auth.disconnect()
+            self._clear_channel_state()
+            self.connection_label.setText("● Authorization update required")
+            self.connect_button.setText("Reconnect Channel")
+        else:
+            self.connection_label.setText("● Connection failed")
         self.logger.warning("YouTube connection failed: %s", message)
         QMessageBox.critical(self, APP_NAME, message)
 
@@ -340,12 +354,15 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, APP_NAME, "Disconnect the current YouTube channel?") != QMessageBox.Yes:
             return
         self.auth.disconnect()
+        self._clear_channel_state()
+        self.connection_label.setText("● Not connected")
+        self.connect_button.setText("Connect YouTube Channel")
+
+    def _clear_channel_state(self) -> None:
         self.credentials = None
         self.channel_id = self.channel_name = ""
         self.settings.data["channel"] = {"id": "", "name": "", "image_url": ""}
         self.settings.save()
-        self.connection_label.setText("● Not connected")
-        self.connect_button.setText("Connect YouTube Channel")
 
     def start_upload_queue(self, items: list[UploadItem], preset: Preset) -> None:
         if self.credentials is None:

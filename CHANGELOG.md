@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.4
+
+- Added `youtube.readonly` alongside `youtube.upload` so the authorized channel can be read with `channels.list(mine=True)`.
+- Forces a complete browser consent flow on reconnect and asks Google to show the account chooser.
+- Detects and removes legacy upload-only tokens before they can produce a 403 insufficient-permissions error.
+- Reuses valid credentials after restart, refreshes expired access tokens and requests a new login for invalid or revoked refresh tokens.
+- Keeps OAuth tokens in Windows Credential Locker and removes both the stored credential and known legacy token files on disconnect.
+- Replaces raw insufficient-scope API errors with clear disconnect-and-reconnect instructions while retaining technical log details.
+- Added OAuth scope, refresh, restart persistence, disconnect cleanup and friendly-error regression coverage.
+- Added a Stop Generation button that safely ends a thumbnail folder batch after the current image.
+- Fixed the Thumbnail Generator preview so the complete 16:9 output remains visible when the window or preview area changes size.
+- Updated and migrated the Chief Keef Type Beat description with Dakuza contact details, dynamic collaborator credits and publication-year search terms.
+- Added optional PNG/JPG watermark placement at the bottom-left or bottom-right with adjustable scale and safe edge margin.
+- Added detail-preserving monochrome, red-tone, blue-tone and custom-color thumbnail filters with adjustable strength.
+
 ## 1.0.3
 
 - Removed the legacy automatically generated `{ARTIST}`, beat-name, producer and year tag list from existing and new presets while preserving every custom tag list.

@@ -12,6 +12,32 @@ from .constants import DEFAULT_CATEGORY_ID, DEFAULT_SCHEDULE_DAYS, DEFAULT_TIMEZ
 LEGACY_AUTOMATIC_TAGS_TEMPLATE = (
     "{ARTIST} type beat, {BEAT_NAME}, {PRODUCER}, {YEAR} type beat"
 )
+CHIEF_KEEF_DESCRIPTION_TEMPLATE = (
+    "🎧 Free for non-profit use only – Must credit: [{PRODUCER_CREDITS}]\n\n"
+    "💰 Need the exclusive rights or license?\n"
+    "DM me on Instagram: www.instagram.com/369dakuza\n\n"
+    "📩 Collabs / Questions:\n"
+    "Email: 369dakuza@gmail.com\n"
+    "IG: @369dakuza\n\n\n"
+    "Tags (ignore):\n"
+    "Chief Keef type beat, Chief Keef type beat {YEAR}, hard Chief Keef type beat, "
+    "Shawn Ferrari type beat, Shawn Ferrari type beat {YEAR}, hard Shawn Ferrari type beat, "
+    "Gucci Mane type beat, Gucci Mane type beat {YEAR}, hard Gucci Mane type beat, "
+    "Mexiko Dro type beat, Mexiko Dro type beat {YEAR}, hard Mexiko Dro type beat, "
+    "Bankroll Fresh type beat, Bankroll Fresh type beat {YEAR}, hard Bankroll Fresh type beat, "
+    "D.Rich type beat, D.Rich type beat {YEAR}, hard D.Rich type beat, "
+    "Shawty Redd type beat, Shawty Redd type beat {YEAR}, hard Shawty Redd type beat, "
+    "Jeezy type beat, Jeezy type beat {YEAR}, hard Jeezy type beat, "
+    "Zukeene type beat, Zukeene type beat {YEAR}, hard Zukeene type beat, "
+    "Akachi type beat, Akachi type beat {YEAR}, hard Akachi type beat, "
+    "Glo type beat, Glo type beat {YEAR}, hard Glo type beat, "
+    "Karma2zz type beat, Karma2zz type beat {YEAR}, hard Karma2zz type beat, "
+    "Tadoe type beat, Tadoe type beat {YEAR}, hard Tadoe type beat, "
+    "Ballout type beat, Ballout type beat {YEAR}, hard Ballout type beat, "
+    "Glo Gang type beat, Glo Gang type beat {YEAR}, hard Glo Gang type beat, "
+    "Atlanta type beat, Atlanta type beat {YEAR}, hard Atlanta type beat, "
+    "Chicago type beat, Chicago type beat {YEAR}, hard Chicago type beat"
+)
 
 
 @dataclass
@@ -21,10 +47,7 @@ class Preset:
     artist: str = "Chief Keef"
     second_artist: str = ""
     title_template: str = '[FREE] {ARTIST} Type Beat - "{BEAT_NAME}"'
-    description_template: str = (
-        "{BEAT_NAME}\n\nMust credit: {PRODUCER_CREDITS}\n\n"
-        "Replace this example with your complete YouTube description."
-    )
+    description_template: str = CHIEF_KEEF_DESCRIPTION_TEMPLATE
     tags_template: str = ""
     category_id: str = DEFAULT_CATEGORY_ID
     made_for_kids: bool = False

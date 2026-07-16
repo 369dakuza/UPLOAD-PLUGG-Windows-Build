@@ -21,6 +21,10 @@ from ..models import Preset, UploadItem
 
 
 ProgressCallback = Callable[[int, int, int, float, str], None]
+INSUFFICIENT_PERMISSIONS_MESSAGE = (
+    "Your YouTube authorization does not include all required permissions.\n"
+    "Please disconnect the channel and connect it again."
+)
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,13 @@ class YouTubeService:
         self.logger = logger or logging.getLogger("upload_plugg.youtube")
 
     def channel_identity(self) -> ChannelIdentity:
-        response = self.api.channels().list(part="snippet", mine=True).execute()
+        try:
+            response = self.api.channels().list(part="snippet", mine=True).execute()
+        except HttpError as exc:
+            self.logger.exception(
+                "YouTube channel lookup failed status=%s", exc.resp.status
+            )
+            raise RuntimeError(_friendly_http_error(exc)) from exc
         items = response.get("items", [])
         if not items:
             raise RuntimeError("No YouTube channel is available for the authorized account.")
@@ -88,21 +98,34 @@ class YouTubeService:
                     uploaded = int(status.resumable_progress)
                     now = time.monotonic()
                     speed = (uploaded - last_bytes) / max(now - last_time, 0.001)
-                    progress(int(status.progress() * 100), uploaded, item.file_size, speed, "Uploading")
+                    progress(
+                        int(status.progress() * 100),
+                        uploaded,
+                        item.file_size,
+                        speed,
+                        "Uploading",
+                    )
                     last_bytes, last_time = uploaded, now
                 retries = 0
             except HttpError as exc:
                 if exc.resp.status not in TRANSIENT_HTTP_STATUS or retries >= max_retries:
+                    self.logger.exception(
+                        "Permanent YouTube upload error status=%s", exc.resp.status
+                    )
                     raise RuntimeError(_friendly_http_error(exc)) from exc
                 retries += 1
                 delay = min(60.0, (2**retries) + random.random())
-                self.logger.warning("Transient YouTube error status=%s retry=%s", exc.resp.status, retries)
+                self.logger.warning(
+                    "Transient YouTube error status=%s retry=%s", exc.resp.status, retries
+                )
                 if progress:
                     progress(0, last_bytes, item.file_size, 0.0, f"Retrying in {delay:.1f}s")
                 _interruptible_wait(delay, cancelled)
             except (OSError, httplib2.HttpLib2Error) as exc:
                 if retries >= max_retries:
-                    raise RuntimeError(f"Network upload failed after {max_retries} retries: {exc}") from exc
+                    raise RuntimeError(
+                        f"Network upload failed after {max_retries} retries: {exc}"
+                    ) from exc
                 retries += 1
                 _interruptible_wait(min(60.0, (2**retries) + random.random()), cancelled)
         video_id = response["id"]
@@ -120,11 +143,17 @@ class YouTubeService:
         }
 
     def recent_titles(self, limit: int = 50) -> list[dict[str, str]]:
-        channels = self.api.channels().list(part="contentDetails", mine=True).execute()
-        uploads = channels["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-        response = self.api.playlistItems().list(
-            part="snippet", playlistId=uploads, maxResults=min(limit, 50)
-        ).execute()
+        try:
+            channels = self.api.channels().list(part="contentDetails", mine=True).execute()
+            uploads = channels["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+            response = self.api.playlistItems().list(
+                part="snippet", playlistId=uploads, maxResults=min(limit, 50)
+            ).execute()
+        except HttpError as exc:
+            self.logger.exception(
+                "YouTube recent-title lookup failed status=%s", exc.resp.status
+            )
+            raise RuntimeError(_friendly_http_error(exc)) from exc
         return [
             {"video_id": row["snippet"]["resourceId"]["videoId"], "title": row["snippet"]["title"]}
             for row in response.get("items", [])
@@ -149,7 +178,11 @@ class YouTubeService:
         }
         if item.publish_at:
             scheduled = datetime.fromisoformat(item.publish_at)
-            status["publishAt"] = scheduled.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+            status["publishAt"] = (
+                scheduled.astimezone(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
         return {"snippet": snippet, "status": status}
 
 
@@ -176,7 +209,13 @@ def _friendly_http_error(error: HttpError) -> str:
         payload = json.loads(error.content.decode("utf-8"))
         message = payload.get("error", {}).get("message", str(error))
         reason = payload.get("error", {}).get("errors", [{}])[0].get("reason", "")
-        return f"YouTube API error {error.resp.status}: {message}" + (f" ({reason})" if reason else "")
+        if reason.casefold() == "insufficientpermissions" or (
+            error.resp.status == 403
+            and "insufficient authentication scopes" in message.casefold()
+        ):
+            return INSUFFICIENT_PERMISSIONS_MESSAGE
+        suffix = f" ({reason})" if reason else ""
+        return f"YouTube API error {error.resp.status}: {message}{suffix}"
     except Exception:
         return f"YouTube API error {error.resp.status}: {error}"
 

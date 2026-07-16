@@ -6,12 +6,16 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from .models import LEGACY_AUTOMATIC_TAGS_TEMPLATE, Preset
+from .models import (
+    CHIEF_KEEF_DESCRIPTION_TEMPLATE,
+    LEGACY_AUTOMATIC_TAGS_TEMPLATE,
+    Preset,
+)
 from .paths import AppPaths
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     "window": {"width": 1500, "height": 900, "last_page": 0},
     "appearance": {"reduce_motion": False},
     "upload": {"keep_awake": True, "max_retries": 5, "chunk_size_mb": 8},
@@ -98,13 +102,23 @@ def _migrate_settings(data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         version = int(data.get("version", 1))
     except (TypeError, ValueError):
         version = 1
-    if version >= 2:
-        return data, False
-    for preset in data.get("presets", []):
-        if not isinstance(preset, dict):
-            continue
-        if preset.get("tags_template", "").strip() == LEGACY_AUTOMATIC_TAGS_TEMPLATE:
-            preset["tags_template"] = ""
-        preset.setdefault("made_for_kids", False)
-    data["version"] = 2
-    return data, True
+    migrated = False
+    presets = data.get("presets", [])
+    if version < 2:
+        for preset in presets:
+            if not isinstance(preset, dict):
+                continue
+            if preset.get("tags_template", "").strip() == LEGACY_AUTOMATIC_TAGS_TEMPLATE:
+                preset["tags_template"] = ""
+            preset.setdefault("made_for_kids", False)
+        migrated = True
+    if version < 3:
+        for preset in presets:
+            if not isinstance(preset, dict):
+                continue
+            if preset.get("name", "").strip().casefold() == "chief keef type beat":
+                preset["description_template"] = CHIEF_KEEF_DESCRIPTION_TEMPLATE
+        migrated = True
+    if migrated:
+        data["version"] = 3
+    return data, migrated

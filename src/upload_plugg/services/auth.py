@@ -5,18 +5,27 @@ from pathlib import Path
 from typing import Any
 
 import keyring
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from ..constants import YOUTUBE_UPLOAD_SCOPE
+from ..constants import YOUTUBE_SCOPES
 
 
 SERVICE_NAME = "UPLOAD_PLUGG"
 TOKEN_ACCOUNT = "youtube_oauth_token"
+REAUTHORIZE_MESSAGE = (
+    "Your saved YouTube authorization is missing required permissions or is no longer valid.\n"
+    "Please connect the YouTube channel again."
+)
 
 
 class AuthenticationError(RuntimeError):
+    pass
+
+
+class ReauthorizationRequired(AuthenticationError):
     pass
 
 
@@ -42,6 +51,10 @@ class OAuthManager:
         self.client_secret_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        try:
+            self.client_secret_path.chmod(0o600)
+        except OSError:
+            pass
         return self.client_secret_path
 
     def connect(self) -> Credentials:
@@ -50,12 +63,17 @@ class OAuthManager:
                 "Google OAuth credentials are missing. Click Connect YouTube Channel and "
                 "select the Desktop Client JSON downloaded from Google Cloud."
             )
+        # A reconnect is always a complete authorization. Google cannot extend an
+        # already-issued desktop token with additional scopes after the fact.
+        self.disconnect()
         flow = InstalledAppFlow.from_client_secrets_file(
-            str(self.client_secret_path), [YOUTUBE_UPLOAD_SCOPE]
+            str(self.client_secret_path), YOUTUBE_SCOPES
         )
         credentials = flow.run_local_server(
-            host="localhost",
+            host="127.0.0.1",
             port=0,
+            access_type="offline",
+            prompt="consent select_account",
             authorization_prompt_message="Your default browser will open for Google authorization.",
             success_message="UPLOAD PLUGG is connected. You may close this browser window.",
             open_browser=True,
@@ -64,24 +82,83 @@ class OAuthManager:
         return credentials
 
     def credentials(self) -> Credentials | None:
-        raw = keyring.get_password(SERVICE_NAME, TOKEN_ACCOUNT)
+        try:
+            raw = keyring.get_password(SERVICE_NAME, TOKEN_ACCOUNT)
+        except keyring.errors.KeyringError as exc:
+            raise AuthenticationError(
+                f"Windows Credential Locker could not be opened: {exc}"
+            ) from exc
         if not raw:
             return None
         try:
             info: dict[str, Any] = json.loads(raw)
-            credentials = Credentials.from_authorized_user_info(info, [YOUTUBE_UPLOAD_SCOPE])
-            if credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
+            if not _stored_scopes(info).issuperset(YOUTUBE_SCOPES):
+                self.disconnect()
+                raise ReauthorizationRequired(REAUTHORIZE_MESSAGE)
+            credentials = Credentials.from_authorized_user_info(info, YOUTUBE_SCOPES)
+            if credentials.expired:
+                if not credentials.refresh_token:
+                    self.disconnect()
+                    raise ReauthorizationRequired(REAUTHORIZE_MESSAGE)
+                try:
+                    credentials.refresh(Request())
+                except RefreshError as exc:
+                    self.disconnect()
+                    raise ReauthorizationRequired(REAUTHORIZE_MESSAGE) from exc
+                except Exception as exc:
+                    raise AuthenticationError(
+                        "The saved YouTube authorization could not be refreshed. "
+                        "Check the internet connection and try again."
+                    ) from exc
                 self._save(credentials)
-            return credentials if credentials.valid else None
+            if not credentials.valid:
+                self.disconnect()
+                raise ReauthorizationRequired(REAUTHORIZE_MESSAGE)
+            return credentials
+        except ReauthorizationRequired:
+            raise
+        except AuthenticationError:
+            raise
         except Exception as exc:
-            raise AuthenticationError(f"Stored authorization could not be loaded: {exc}") from exc
+            self.disconnect()
+            raise ReauthorizationRequired(REAUTHORIZE_MESSAGE) from exc
 
     def disconnect(self) -> None:
         try:
             keyring.delete_password(SERVICE_NAME, TOKEN_ACCOUNT)
-        except keyring.errors.PasswordDeleteError:
+        except keyring.errors.KeyringError:
             pass
+        for path in self._legacy_token_paths():
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _save(self, credentials: Credentials) -> None:
-        keyring.set_password(SERVICE_NAME, TOKEN_ACCOUNT, credentials.to_json())
+        try:
+            keyring.set_password(SERVICE_NAME, TOKEN_ACCOUNT, credentials.to_json())
+        except keyring.errors.KeyringError as exc:
+            raise AuthenticationError(
+                f"YouTube authorization could not be saved in Windows Credential Locker: {exc}"
+            ) from exc
+
+    def _legacy_token_paths(self) -> tuple[Path, ...]:
+        config = self.client_secret_path.parent
+        root = config.parent
+        return (
+            config / "token.json",
+            config / "youtube_token.json",
+            root / "token.json",
+            root / "auth" / "token.json",
+        )
+
+
+def _stored_scopes(info: dict[str, Any]) -> set[str]:
+    stored: set[str] = set()
+    for key in ("scopes", "scope", "granted_scopes"):
+        raw = info.get(key, [])
+        if isinstance(raw, str):
+            stored.update(raw.replace(",", " ").split())
+        elif isinstance(raw, (list, tuple, set)):
+            stored.update(str(scope) for scope in raw)
+    return stored

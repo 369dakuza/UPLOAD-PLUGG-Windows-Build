@@ -1,18 +1,18 @@
 # UPLOAD PLUGG
 
-UPLOAD PLUGG 1.0.3 is a Windows 10 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one permanent dark-red interface.
+UPLOAD PLUGG 1.0.4 is a Windows 10 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one permanent dark-red interface.
 
 **Powered by: Dakuza**
 
 ## What is included
 
-- Official Google OAuth desktop flow; no Google password, cookies or recovery codes are requested.
+- Official Google OAuth desktop flow with upload and read-only channel scopes, secure token refresh and complete disconnect; no Google password, cookies or recovery codes are requested.
 - MP4 folder scan, natural numeric ordering, editable beat/collaborator parsing and 1–30 item batches.
 - Preset-based titles, custom 500-character YouTube tags, automatic artist hashtags and `Prod. Dakuza & Collaborator` credit generation.
 - Per-preset Made for kids control; the default is off so comments remain available.
 - Europe/Berlin scheduling with daylight-saving handling and per-item preview.
 - Resumable sequential YouTube upload, exponential retry with jitter, custom thumbnail application and Windows keep-awake.
-- 1920 × 1080 JPG generator with square-center/blurred-sides, crop, fit and solid-side modes.
+- 1920 × 1080 JPG generator with square-center/blurred-sides, crop, fit and solid-side modes, full-frame preview, cancellable folder batches, corner watermarks and tone-preserving color filters.
 - Non-repeating randomized thumbnail pools, persistent queue, SQLite history and local duplicate checks.
 - Dry Run exports in JSON, CSV and readable text without any YouTube upload.
 - Dashboard, upload generator, thumbnail generator, presets, schedule, history, logs and settings pages.

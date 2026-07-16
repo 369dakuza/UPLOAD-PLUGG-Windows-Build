@@ -11,7 +11,7 @@ GOOGLE_ENDPOINTS = (
 
 
 def _https_reachable(url: str, timeout: float) -> bool:
-    request = urllib.request.Request(url, headers={"User-Agent": "UPLOAD-PLUGG/1.0.3"})
+    request = urllib.request.Request(url, headers={"User-Agent": "UPLOAD-PLUGG/1.0.4"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return 200 <= response.status < 500

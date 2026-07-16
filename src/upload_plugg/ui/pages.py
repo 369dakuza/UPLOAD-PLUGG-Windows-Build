@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import webbrowser
 from datetime import date, datetime, time
 from pathlib import Path
@@ -118,6 +119,36 @@ class DarkComboBox(QComboBox):
         popup_window = self.view().window()
         popup_window.setAutoFillBackground(True)
         popup_window.setPalette(self.view().palette())
+
+
+class AspectPreviewLabel(QLabel):
+    """Display the complete 16:9 preview without clipping it to the widget."""
+
+    def __init__(self, text: str = ""):
+        super().__init__(text)
+        self._source_pixmap = QPixmap()
+
+    def set_preview_pixmap(self, pixmap: QPixmap) -> None:
+        self._source_pixmap = pixmap
+        self.setText("")
+        self._fit_pixmap()
+
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        self._fit_pixmap()
+
+    def _fit_pixmap(self) -> None:
+        if self._source_pixmap.isNull():
+            return
+        available = self.contentsRect().size()
+        if available.width() <= 0 or available.height() <= 0:
+            return
+        fitted = self._source_pixmap.scaled(
+            available,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        super().setPixmap(fitted)
 
 
 def hash_upload_items(items: list[UploadItem]) -> list[UploadItem]:
@@ -627,6 +658,7 @@ class ThumbnailGeneratorPage(QWidget):
         self.paths = paths
         self.preview_source: Path | None = None
         self.preview_revision = 0
+        self.batch_cancel_event: threading.Event | None = None
         self.solid_color = (18, 18, 20)
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -652,6 +684,34 @@ class ThumbnailGeneratorPage(QWidget):
         self.background_mode.addItem("Solid Color", "solid")
         self.color_button = QPushButton("Choose Background Color")
         self.color_button.clicked.connect(self.choose_background_color)
+        self.filter_mode = DarkComboBox()
+        self.filter_mode.addItem("Original Colors", "original")
+        self.filter_mode.addItem("Monochrome", "monochrome")
+        self.filter_mode.addItem("Red Tones", "red")
+        self.filter_mode.addItem("Blue Tones", "blue")
+        self.filter_mode.addItem("Change Color…", "custom")
+        self.filter_color = (190, 25, 45)
+        self.filter_color_button = QPushButton("Change Filter Color")
+        self.filter_color_button.clicked.connect(self.choose_filter_color)
+        self.filter_strength = QSlider(Qt.Horizontal)
+        self.filter_strength.setRange(0, 100)
+        self.filter_strength.setValue(100)
+        self.watermark = QLineEdit()
+        self.watermark.setPlaceholderText("Optional transparent PNG or JPG logo")
+        watermark_button = QPushButton("Watermark / Logo")
+        watermark_button.clicked.connect(self.select_watermark)
+        clear_watermark = QPushButton("Clear Watermark")
+        clear_watermark.clicked.connect(self.clear_watermark)
+        self.watermark_position = DarkComboBox()
+        self.watermark_position.addItem("Bottom Right", "bottom_right")
+        self.watermark_position.addItem("Bottom Left", "bottom_left")
+        self.watermark_size = QSlider(Qt.Horizontal)
+        self.watermark_size.setRange(10, 100)
+        self.watermark_size.setValue(55)
+        self.watermark_margin = QSpinBox()
+        self.watermark_margin.setRange(16, 180)
+        self.watermark_margin.setValue(48)
+        self.watermark_margin.setSuffix(" px")
         self.blur = QSlider(Qt.Horizontal)
         self.blur.setRange(0, 60)
         self.blur.setValue(28)
@@ -670,6 +730,8 @@ class ThumbnailGeneratorPage(QWidget):
         self.crop_x_label = QLabel("Crop X · 50%")
         self.crop_y_label = QLabel("Crop Y · 50%")
         self.saturation_label = QLabel("Background saturation · 75%")
+        self.filter_strength_label = QLabel("Filter strength · 100%")
+        self.watermark_size_label = QLabel("Watermark size · 55%")
         self.crop_x.setToolTip("Move the crop focus left or right. The preview updates automatically.")
         self.crop_y.setToolTip("Move the crop focus up or down. The preview updates automatically.")
         self.zoom.setToolTip("Zoom creates room for Crop X and Crop Y to reposition square artwork.")
@@ -698,27 +760,47 @@ class ThumbnailGeneratorPage(QWidget):
         form.addWidget(QLabel("Center size"), 5, 0); form.addWidget(self.center_size, 5, 1)
         form.addWidget(QLabel("Quality"), 5, 2); form.addWidget(self.quality, 5, 3)
         form.addWidget(QLabel("Filename suffix"), 5, 4); form.addWidget(self.suffix, 5, 5)
+        form.addWidget(QLabel("Color filter"), 6, 0)
+        form.addWidget(self.filter_mode, 6, 1)
+        form.addWidget(self.filter_strength_label, 6, 2)
+        form.addWidget(self.filter_strength, 6, 3)
+        form.addWidget(self.filter_color_button, 6, 4, 1, 2)
+        form.addWidget(QLabel("Watermark"), 7, 0)
+        form.addWidget(self.watermark, 7, 1, 1, 3)
+        form.addWidget(watermark_button, 7, 4)
+        form.addWidget(clear_watermark, 7, 5)
+        form.addWidget(QLabel("Placement"), 8, 0)
+        form.addWidget(self.watermark_position, 8, 1)
+        form.addWidget(self.watermark_size_label, 8, 2)
+        form.addWidget(self.watermark_size, 8, 3)
+        form.addWidget(QLabel("Edge margin"), 8, 4)
+        form.addWidget(self.watermark_margin, 8, 5)
         root.addWidget(form_panel)
         buttons = QHBoxLayout()
         preview = QPushButton("Generate Preview")
         preview.clicked.connect(self.preview)
         random_preview = QPushButton("New Random Preview")
         random_preview.clicked.connect(self.new_random_preview)
-        generate_random = QPushButton("Generate Random Thumbnail")
-        generate_random.clicked.connect(self.generate_random)
-        generate = QPushButton("Generate Thumbnail(s)")
-        generate.setProperty("accent", True)
-        generate.clicked.connect(self.generate)
+        self.generate_random_button = QPushButton("Generate Random Thumbnail")
+        self.generate_random_button.clicked.connect(self.generate_random)
+        self.generate_button = QPushButton("Generate Thumbnail(s)")
+        self.generate_button.setProperty("accent", True)
+        self.generate_button.clicked.connect(self.generate)
+        self.stop_button = QPushButton("Stop Generation")
+        self.stop_button.setProperty("danger", True)
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_generation)
         buttons.addWidget(preview)
         buttons.addWidget(random_preview)
-        buttons.addWidget(generate_random)
-        buttons.addWidget(generate)
+        buttons.addWidget(self.generate_random_button)
+        buttons.addWidget(self.generate_button)
+        buttons.addWidget(self.stop_button)
         buttons.addStretch()
         root.addLayout(buttons)
         self.preview_source_label = QLabel("Preview source: none")
         self.preview_source_label.setObjectName("muted")
         root.addWidget(self.preview_source_label)
-        self.preview_label = QLabel("Preview appears here")
+        self.preview_label = AspectPreviewLabel("Preview appears here")
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setMinimumHeight(360)
         self.preview_label.setStyleSheet("background:#060708;border:1px solid #292c33;border-radius:12px")
@@ -729,14 +811,19 @@ class ThumbnailGeneratorPage(QWidget):
         self.source.textChanged.connect(self.source_changed)
         self.mode.currentIndexChanged.connect(self.option_changed)
         self.background_mode.currentIndexChanged.connect(self.background_changed)
+        self.filter_mode.currentIndexChanged.connect(self.filter_changed)
+        self.watermark.textChanged.connect(self.option_changed)
         for control in (
             self.blur, self.darkness, self.quality, self.crop_x, self.crop_y,
-            self.zoom, self.saturation, self.center_size,
+            self.zoom, self.saturation, self.center_size, self.filter_strength,
+            self.watermark_size, self.watermark_margin,
         ):
             control.valueChanged.connect(self.option_changed)
+        self.watermark_position.currentIndexChanged.connect(self.option_changed)
         self.update_control_labels()
         self.update_background_controls()
         self.update_color_button()
+        self.update_filter_controls()
 
     def select_source(self) -> None:
         selected, _ = QFileDialog.getOpenFileName(self, "Select Artwork", "", "Images (*.png *.jpg *.jpeg)")
@@ -755,6 +842,19 @@ class ThumbnailGeneratorPage(QWidget):
             self.settings.data["folders"]["thumbnail_output"] = selected
             self.settings.save()
 
+    def select_watermark(self) -> None:
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Watermark or Logo",
+            "",
+            "Images (*.png *.jpg *.jpeg)",
+        )
+        if selected:
+            self.watermark.setText(selected)
+
+    def clear_watermark(self) -> None:
+        self.watermark.clear()
+
     def source_changed(self, _text: str) -> None:
         self.preview_source = None
         self.preview_source_label.setText("Preview source: none")
@@ -768,10 +868,20 @@ class ThumbnailGeneratorPage(QWidget):
         self.update_background_controls()
         self.schedule_live_preview()
 
+    def filter_changed(self, *_: object) -> None:
+        self.update_filter_controls()
+        self.schedule_live_preview()
+
     def update_control_labels(self) -> None:
         self.crop_x_label.setText(f"Crop X · {self.crop_x.value()}%")
         self.crop_y_label.setText(f"Crop Y · {self.crop_y.value()}%")
         self.saturation_label.setText(f"Background saturation · {self.saturation.value()}%")
+        self.filter_strength_label.setText(
+            f"Filter strength · {self.filter_strength.value()}%"
+        )
+        self.watermark_size_label.setText(
+            f"Watermark size · {self.watermark_size.value()}%"
+        )
 
     def update_background_controls(self) -> None:
         artwork = self.background_mode.currentData() == "artwork"
@@ -788,12 +898,38 @@ class ThumbnailGeneratorPage(QWidget):
         self.update_color_button()
         self.schedule_live_preview()
 
+    def choose_filter_color(self) -> None:
+        initial = QColor(*self.filter_color)
+        color = QColorDialog.getColor(initial, self, "Choose Thumbnail Filter Color")
+        if not color.isValid():
+            return
+        self.filter_color = (color.red(), color.green(), color.blue())
+        self.update_filter_color_button()
+        self.schedule_live_preview()
+
     def update_color_button(self) -> None:
         red, green, blue = self.solid_color
         brightness = (red * 299 + green * 587 + blue * 114) / 1000
         text = "#111111" if brightness > 150 else "white"
         self.color_button.setText(f"Color · #{red:02X}{green:02X}{blue:02X}")
         self.color_button.setStyleSheet(
+            f"background: rgb({red}, {green}, {blue}); color: {text}; font-weight: 700;"
+        )
+
+    def update_filter_controls(self) -> None:
+        mode = self.filter_mode.currentData()
+        self.filter_strength.setEnabled(mode != "original")
+        self.filter_color_button.setEnabled(mode == "custom")
+        self.update_filter_color_button()
+
+    def update_filter_color_button(self) -> None:
+        red, green, blue = self.filter_color
+        brightness = (red * 299 + green * 587 + blue * 114) / 1000
+        text = "#111111" if brightness > 150 else "white"
+        self.filter_color_button.setText(
+            f"Change Color · #{red:02X}{green:02X}{blue:02X}"
+        )
+        self.filter_color_button.setStyleSheet(
             f"background: rgb({red}, {green}, {blue}); color: {text}; font-weight: 700;"
         )
 
@@ -809,6 +945,13 @@ class ThumbnailGeneratorPage(QWidget):
             crop_x=self.crop_x.value() / 100, crop_y=self.crop_y.value() / 100,
             zoom=self.zoom.value(), saturation=self.saturation.value() / 100,
             center_size=self.center_size.value(), solid_color=self.solid_color,
+            color_filter=self.filter_mode.currentData(),
+            filter_color=self.filter_color,
+            filter_strength=self.filter_strength.value() / 100,
+            watermark_path=self.watermark.text().strip(),
+            watermark_position=self.watermark_position.currentData(),
+            watermark_scale=self.watermark_size.value() / 100,
+            watermark_margin=self.watermark_margin.value(),
         )
 
     def resolve_preview_source(self, force_random: bool = False) -> Path:
@@ -855,8 +998,7 @@ class ThumbnailGeneratorPage(QWidget):
     def preview_done(self, path: Path, revision: int) -> None:
         if revision != self.preview_revision:
             return
-        pixmap = QPixmap(str(path)).scaled(960, 540, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.preview_label.setPixmap(pixmap)
+        self.preview_label.set_preview_pixmap(QPixmap(str(path)))
 
     def preview_failed(self, message: str, revision: int, show_error: bool) -> None:
         if revision != self.preview_revision:
@@ -880,10 +1022,17 @@ class ThumbnailGeneratorPage(QWidget):
         self.request_task.emit(
             generate_thumbnail,
             (source, target, self.options()),
-            {"done": self.generated_done, "failed": self.failed},
+            {"done": self.generated_done, "failed": self.generation_failed},
         )
 
     def generate(self) -> None:
+        if self.batch_cancel_event is not None:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "Thumbnail generation is already running. Use Stop Generation first.",
+            )
+            return
         source = Path(self.source.text())
         output = Path(self.output.text())
         if not source.exists() or not output.is_dir():
@@ -894,22 +1043,73 @@ class ThumbnailGeneratorPage(QWidget):
             if not sources:
                 QMessageBox.warning(self, APP_NAME, "No valid JPG, JPEG or PNG images were found in the source folder.")
                 return
-            function, args = generate_batch, (sources, output, self.options(), self.suffix.text())
-            callbacks = {"done": self.generated_done, "failed": self.failed, "progress": self.generation_progress}
+            self.batch_cancel_event = threading.Event()
+            self.generate_button.setEnabled(False)
+            self.generate_random_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
+            self.stop_button.setText("Stop Generation")
+            function, args = generate_batch, (
+                sources,
+                output,
+                self.options(),
+                self.suffix.text(),
+                self.batch_cancel_event,
+            )
+            callbacks = {
+                "done": self.generated_done,
+                "failed": self.generation_failed,
+                "progress": self.generation_progress,
+            }
         else:
             function, args = generate_thumbnail, (source, output / f"{source.stem}{self.suffix.text()}.jpg", self.options())
-            callbacks = {"done": self.generated_done, "failed": self.failed}
+            callbacks = {"done": self.generated_done, "failed": self.generation_failed}
         self.progress.setValue(0)
         self.request_task.emit(function, args, callbacks)
 
     def generated_done(self, result: object) -> None:
         count = len(result) if isinstance(result, list) else 1
-        self.progress.setValue(100)
+        was_stopped = bool(self.batch_cancel_event and self.batch_cancel_event.is_set())
+        self._finish_batch_state()
+        if not was_stopped:
+            self.progress.setValue(100)
         self.generated.emit(count)
-        QMessageBox.information(self, APP_NAME, f"Generated {count} thumbnail(s). Original files were not changed.")
+        if was_stopped:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                f"Thumbnail generation stopped after {count} thumbnail(s). "
+                "Original files were not changed.",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                f"Generated {count} thumbnail(s). Original files were not changed.",
+            )
 
     def generation_progress(self, current: int, total: int) -> None:
         self.progress.setValue(round(current * 100 / max(total, 1)))
+
+    def stop_generation(self) -> None:
+        if self.batch_cancel_event is None:
+            return
+        self.batch_cancel_event.set()
+        self.stop_button.setEnabled(False)
+        self.stop_button.setText("Stopping…")
+        self.preview_source_label.setText(
+            "Stopping thumbnail generation after the current image…"
+        )
+
+    def _finish_batch_state(self) -> None:
+        self.batch_cancel_event = None
+        self.generate_button.setEnabled(True)
+        self.generate_random_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.stop_button.setText("Stop Generation")
+
+    def generation_failed(self, message: str) -> None:
+        self._finish_batch_state()
+        self.failed(message)
 
     def failed(self, message: str) -> None:
         QMessageBox.critical(self, APP_NAME, message)

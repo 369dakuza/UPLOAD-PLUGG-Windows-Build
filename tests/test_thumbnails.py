@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from upload_plugg.core.thumbnails import (
     ThumbnailOptions,
     compose_thumbnail,
     crop_box,
+    generate_batch,
     generate_thumbnail,
     random_source_image,
     source_images,
@@ -75,6 +77,66 @@ class ThumbnailTests(unittest.TestCase):
         )
         self.assertEqual(result.getpixel((10, 10)), (22, 44, 88))
 
+    def test_tone_filters_preserve_detail_in_selected_color_family(self):
+        source = Image.new("RGB", (1920, 1080), (80, 180, 120))
+        red = compose_thumbnail(
+            source,
+            ThumbnailOptions(mode="crop_16_9", color_filter="red"),
+        )
+        blue = compose_thumbnail(
+            source,
+            ThumbnailOptions(mode="crop_16_9", color_filter="blue"),
+        )
+        mono = compose_thumbnail(
+            source,
+            ThumbnailOptions(mode="crop_16_9", color_filter="monochrome"),
+        )
+
+        red_pixel = red.getpixel((960, 540))
+        blue_pixel = blue.getpixel((960, 540))
+        mono_pixel = mono.getpixel((960, 540))
+        self.assertGreater(red_pixel[0], red_pixel[2])
+        self.assertGreater(blue_pixel[2], blue_pixel[0])
+        self.assertEqual(mono_pixel[0], mono_pixel[1])
+        self.assertEqual(mono_pixel[1], mono_pixel[2])
+
+    def test_watermark_uses_bottom_corner_anchor_and_safe_margin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            logo = root / "logo.png"
+            watermark = Image.new("RGBA", (200, 100), (0, 0, 0, 0))
+            watermark.paste((0, 255, 0, 255), (0, 0, 200, 100))
+            watermark.save(logo)
+            source = Image.new("RGB", (1920, 1080), "black")
+
+            right = compose_thumbnail(
+                source,
+                ThumbnailOptions(
+                    mode="crop_16_9",
+                    watermark_path=str(logo),
+                    watermark_position="bottom_right",
+                    watermark_margin=48,
+                ),
+            )
+            left = compose_thumbnail(
+                source,
+                ThumbnailOptions(
+                    mode="crop_16_9",
+                    watermark_path=str(logo),
+                    watermark_position="bottom_left",
+                    watermark_margin=48,
+                ),
+            )
+
+            right_box = right.getchannel("G").point(lambda value: value > 240).getbbox()
+            left_box = left.getchannel("G").point(lambda value: value > 240).getbbox()
+            self.assertIsNotNone(right_box)
+            self.assertIsNotNone(left_box)
+            self.assertGreater(right_box[0], 960)
+            self.assertEqual(left_box[0], 48)
+            self.assertLessEqual(right_box[2], 1920 - 48)
+            self.assertLessEqual(right_box[3], 1080 - 48)
+
     def test_source_folder_supports_random_image_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -88,6 +150,33 @@ class ThumbnailTests(unittest.TestCase):
 
             self.assertEqual(candidates, [first, second])
             self.assertIn(random_source_image(root), candidates)
+
+    def test_batch_generation_stops_after_current_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            sources = []
+            for number in range(3):
+                source = root / f"cover_{number}.png"
+                Image.new("RGB", (80, 80), (number * 40, 10, 20)).save(source)
+                sources.append(source)
+            cancelled = threading.Event()
+
+            def stop_after_first(current: int, _total: int) -> None:
+                if current == 1:
+                    cancelled.set()
+
+            results = generate_batch(
+                sources,
+                output,
+                ThumbnailOptions(),
+                cancelled=cancelled,
+                progress=stop_after_first,
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(len(list(output.glob("*.jpg"))), 1)
 
 
 if __name__ == "__main__":

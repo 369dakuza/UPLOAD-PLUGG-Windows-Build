@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import random
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -29,6 +30,13 @@ class ThumbnailOptions:
     quality: int = 92
     max_bytes: int = YOUTUBE_THUMBNAIL_LIMIT_BYTES
     solid_color: tuple[int, int, int] = (18, 18, 20)
+    color_filter: str = "original"
+    filter_color: tuple[int, int, int] = (190, 25, 45)
+    filter_strength: float = 1.0
+    watermark_path: str = ""
+    watermark_position: str = "bottom_right"
+    watermark_scale: float = 0.55
+    watermark_margin: int = 48
 
 
 def crop_box(source_size: tuple[int, int], target_ratio: float, x: float, y: float, zoom: float = 1.0) -> tuple[int, int, int, int]:
@@ -49,21 +57,24 @@ def crop_box(source_size: tuple[int, int], target_ratio: float, x: float, y: flo
 
 def compose_thumbnail(source: Image.Image, options: ThumbnailOptions) -> Image.Image:
     source = ImageOps.exif_transpose(source).convert("RGB")
+    source = _apply_color_filter(source, options)
     if options.mode == "crop_16_9":
         box = crop_box(source.size, 16 / 9, options.crop_x, options.crop_y, options.zoom)
-        return source.crop(box).resize(CANVAS_SIZE, Image.Resampling.LANCZOS)
-    if options.mode == "fit_background":
+        canvas = source.crop(box).resize(CANVAS_SIZE, Image.Resampling.LANCZOS)
+    elif options.mode == "fit_background":
         background = _selected_background(source, options)
         foreground = ImageOps.contain(source, CANVAS_SIZE, Image.Resampling.LANCZOS)
         background.paste(foreground, ((1920 - foreground.width) // 2, (1080 - foreground.height) // 2))
-        return background
-
-    size = max(320, min(1080, options.center_size))
-    square = source.crop(crop_box(source.size, 1.0, options.crop_x, options.crop_y, options.zoom))
-    square = square.resize((size, size), Image.Resampling.LANCZOS)
-    canvas = _selected_background(source, options)
-    canvas.paste(square, ((1920 - size) // 2, (1080 - size) // 2))
-    return canvas
+        canvas = background
+    else:
+        size = max(320, min(1080, options.center_size))
+        square = source.crop(
+            crop_box(source.size, 1.0, options.crop_x, options.crop_y, options.zoom)
+        )
+        square = square.resize((size, size), Image.Resampling.LANCZOS)
+        canvas = _selected_background(source, options)
+        canvas.paste(square, ((1920 - size) // 2, (1080 - size) // 2))
+    return _apply_watermark(canvas, options)
 
 
 def source_images(source: str | Path) -> list[Path]:
@@ -113,11 +124,14 @@ def generate_batch(
     output_folder: Path,
     options: ThumbnailOptions,
     suffix: str = "_thumbnail",
+    cancelled: threading.Event | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[Path]:
     results: list[Path] = []
     valid = [p for p in sources if p.suffix.casefold() in VALID_SOURCE_EXTENSIONS]
     for index, source in enumerate(valid, start=1):
+        if cancelled and cancelled.is_set():
+            break
         results.append(generate_thumbnail(source, output_folder / f"{source.stem}{suffix}.jpg", options))
         if progress:
             progress(index, len(valid))
@@ -158,6 +172,61 @@ def _selected_background(source: Image.Image, options: ThumbnailOptions) -> Imag
     if options.background_mode == "solid" or options.mode == "square_solid":
         return Image.new("RGB", CANVAS_SIZE, options.solid_color)
     return _background(source, options)
+
+
+def _apply_color_filter(source: Image.Image, options: ThumbnailOptions) -> Image.Image:
+    mode = options.color_filter
+    strength = min(1.0, max(0.0, options.filter_strength))
+    if mode == "original" or strength <= 0:
+        return source
+    gray = ImageOps.grayscale(source)
+    if mode == "monochrome":
+        filtered = gray.convert("RGB")
+    else:
+        colors = {
+            "red": (210, 25, 45),
+            "blue": (35, 95, 220),
+            "custom": options.filter_color,
+        }
+        red, green, blue = colors.get(mode, options.filter_color)
+        shadow = (
+            round(red * 0.06),
+            round(green * 0.06),
+            round(blue * 0.06),
+        )
+        highlight = (
+            round(red + (255 - red) * 0.58),
+            round(green + (255 - green) * 0.58),
+            round(blue + (255 - blue) * 0.58),
+        )
+        filtered = ImageOps.colorize(gray, black=shadow, white=highlight)
+    return Image.blend(source, filtered, strength)
+
+
+def _apply_watermark(canvas: Image.Image, options: ThumbnailOptions) -> Image.Image:
+    if not options.watermark_path.strip():
+        return canvas
+    source = Path(options.watermark_path)
+    if not source.is_file() or source.suffix.casefold() not in VALID_SOURCE_EXTENSIONS:
+        raise ValueError("Choose a valid PNG, JPG or JPEG watermark file.")
+    try:
+        with Image.open(source) as image:
+            watermark = ImageOps.exif_transpose(image).convert("RGBA")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise ValueError(f"Watermark is damaged or unsupported: {source.name}") from exc
+    side_space = (CANVAS_SIZE[0] - CANVAS_SIZE[1]) // 2
+    max_width = max(48, round(side_space * min(1.0, max(0.1, options.watermark_scale))))
+    max_height = round(CANVAS_SIZE[1] * 0.35)
+    watermark.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+    margin = min(180, max(16, int(options.watermark_margin)))
+    if options.watermark_position == "bottom_left":
+        left = margin
+    else:
+        left = CANVAS_SIZE[0] - margin - watermark.width
+    top = CANVAS_SIZE[1] - margin - watermark.height
+    result = canvas.copy()
+    result.paste(watermark, (left, top), watermark)
+    return result
 
 
 def _save_under_limit(image: Image.Image, target: Path, quality: int, max_bytes: int) -> None:
