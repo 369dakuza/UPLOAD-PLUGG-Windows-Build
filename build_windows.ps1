@@ -33,7 +33,7 @@ Assert-LastExitCode "Running automated tests"
 & ".\.venv\Scripts\pyinstaller.exe" --noconfirm --clean "UPLOAD_PLUGG.spec"
 Assert-LastExitCode "Building the Windows executable"
 
-$PortableZip = Join-Path $ProjectRoot "dist\UPLOAD_PLUGG_1.0.1_Portable.zip"
+$PortableZip = Join-Path $ProjectRoot "dist\UPLOAD_PLUGG_1.0.2_Portable.zip"
 if (Test-Path $PortableZip) { Remove-Item $PortableZip -Force }
 Compress-Archive -Path "dist\UPLOAD PLUGG\*" -DestinationPath $PortableZip
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -17,6 +18,7 @@ VALID_SOURCE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 @dataclass(frozen=True)
 class ThumbnailOptions:
     mode: str = "square_blur"
+    background_mode: str = "artwork"
     crop_x: float = 0.5
     crop_y: float = 0.5
     zoom: float = 1.0
@@ -51,7 +53,7 @@ def compose_thumbnail(source: Image.Image, options: ThumbnailOptions) -> Image.I
         box = crop_box(source.size, 16 / 9, options.crop_x, options.crop_y, options.zoom)
         return source.crop(box).resize(CANVAS_SIZE, Image.Resampling.LANCZOS)
     if options.mode == "fit_background":
-        background = _background(source, options)
+        background = _selected_background(source, options)
         foreground = ImageOps.contain(source, CANVAS_SIZE, Image.Resampling.LANCZOS)
         background.paste(foreground, ((1920 - foreground.width) // 2, (1080 - foreground.height) // 2))
         return background
@@ -59,12 +61,28 @@ def compose_thumbnail(source: Image.Image, options: ThumbnailOptions) -> Image.I
     size = max(320, min(1080, options.center_size))
     square = source.crop(crop_box(source.size, 1.0, options.crop_x, options.crop_y, options.zoom))
     square = square.resize((size, size), Image.Resampling.LANCZOS)
-    if options.mode == "square_solid":
-        canvas = Image.new("RGB", CANVAS_SIZE, options.solid_color)
-    else:
-        canvas = _background(source, options)
+    canvas = _selected_background(source, options)
     canvas.paste(square, ((1920 - size) // 2, (1080 - size) // 2))
     return canvas
+
+
+def source_images(source: str | Path) -> list[Path]:
+    path = Path(source)
+    if path.is_file() and path.suffix.casefold() in VALID_SOURCE_EXTENSIONS:
+        return [path]
+    if path.is_dir():
+        return sorted(
+            item for item in path.iterdir()
+            if item.is_file() and item.suffix.casefold() in VALID_SOURCE_EXTENSIONS
+        )
+    return []
+
+
+def random_source_image(source: str | Path) -> Path:
+    candidates = source_images(source)
+    if not candidates:
+        raise ValueError("No valid JPG, JPEG or PNG source images were found.")
+    return random.SystemRandom().choice(candidates)
 
 
 def generate_thumbnail(
@@ -136,6 +154,12 @@ def _background(source: Image.Image, options: ThumbnailOptions) -> Image.Image:
     return background.filter(ImageFilter.GaussianBlur(max(0.0, options.blur)))
 
 
+def _selected_background(source: Image.Image, options: ThumbnailOptions) -> Image.Image:
+    if options.background_mode == "solid" or options.mode == "square_solid":
+        return Image.new("RGB", CANVAS_SIZE, options.solid_color)
+    return _background(source, options)
+
+
 def _save_under_limit(image: Image.Image, target: Path, quality: int, max_bytes: int) -> None:
     quality = max(45, min(95, quality))
     for current_quality in range(quality, 44, -3):
@@ -153,4 +177,3 @@ def _save_under_limit(image: Image.Image, target: Path, quality: int, max_bytes:
             target.write_bytes(buffer.getvalue())
             return
     raise ValueError(f"Could not create a thumbnail below {max_bytes} bytes.")
-

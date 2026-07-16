@@ -4,7 +4,14 @@ from pathlib import Path
 
 from PIL import Image
 
-from upload_plugg.core.thumbnails import ThumbnailOptions, crop_box, generate_thumbnail
+from upload_plugg.core.thumbnails import (
+    ThumbnailOptions,
+    compose_thumbnail,
+    crop_box,
+    generate_thumbnail,
+    random_source_image,
+    source_images,
+)
 
 
 class ThumbnailTests(unittest.TestCase):
@@ -36,7 +43,52 @@ class ThumbnailTests(unittest.TestCase):
             second = generate_thumbnail(source, target)
             self.assertNotEqual(second, target)
 
+    def test_crop_x_changes_wide_image_focus(self):
+        source = Image.new("RGB", (2000, 1000), "red")
+        source.paste(Image.new("RGB", (1000, 1000), "blue"), (1000, 0))
+        left = compose_thumbnail(source, ThumbnailOptions(mode="crop_16_9", crop_x=0.0))
+        right = compose_thumbnail(source, ThumbnailOptions(mode="crop_16_9", crop_x=1.0))
+        self.assertNotEqual(left.getpixel((960, 540)), right.getpixel((960, 540)))
+
+    def test_background_saturation_changes_preview_background(self):
+        source = Image.new("RGB", (700, 1100), (190, 35, 20))
+        gray = compose_thumbnail(
+            source,
+            ThumbnailOptions(mode="square_blur", blur=0, darkness=0, saturation=0),
+        )
+        saturated = compose_thumbnail(
+            source,
+            ThumbnailOptions(mode="square_blur", blur=0, darkness=0, saturation=1.6),
+        )
+        self.assertNotEqual(gray.getpixel((20, 20)), saturated.getpixel((20, 20)))
+
+    def test_solid_background_uses_selected_color(self):
+        source = Image.new("RGB", (900, 1200), "white")
+        result = compose_thumbnail(
+            source,
+            ThumbnailOptions(
+                mode="square_blur",
+                background_mode="solid",
+                solid_color=(22, 44, 88),
+                center_size=640,
+            ),
+        )
+        self.assertEqual(result.getpixel((10, 10)), (22, 44, 88))
+
+    def test_source_folder_supports_random_image_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "one.jpg"
+            second = root / "two.png"
+            Image.new("RGB", (20, 20), "red").save(first)
+            Image.new("RGB", (20, 20), "blue").save(second)
+            (root / "ignore.txt").write_text("not an image", encoding="utf-8")
+
+            candidates = source_images(root)
+
+            self.assertEqual(candidates, [first, second])
+            self.assertIn(random_source_image(root), candidates)
+
 
 if __name__ == "__main__":
     unittest.main()
-

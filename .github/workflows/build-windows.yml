@@ -35,25 +35,25 @@ jobs:
       - name: Verify installer output
         shell: powershell
         run: |
-          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.1_Update.exe")) {
+          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.2_Update.exe")) {
             throw "The Windows installer was not created."
           }
-          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.1_Portable.zip")) {
+          if (-not (Test-Path "dist\UPLOAD_PLUGG_1.0.2_Portable.zip")) {
             throw "The portable Windows package was not created."
           }
 
       - name: Upload installable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: UPLOAD_PLUGG_1.0.1_WINDOWS_UPDATE
-          path: dist/UPLOAD_PLUGG_1.0.1_Update.exe
+          name: UPLOAD_PLUGG_1.0.2_WINDOWS_UPDATE
+          path: dist/UPLOAD_PLUGG_1.0.2_Update.exe
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload portable version
         uses: actions/upload-artifact@v4
         with:
-          name: UPLOAD_PLUGG_1.0.1_PORTABLE
-          path: dist/UPLOAD_PLUGG_1.0.1_Portable.zip
+          name: UPLOAD_PLUGG_1.0.2_PORTABLE
+          path: dist/UPLOAD_PLUGG_1.0.2_Portable.zip
           if-no-files-found: error
           retention-days: 30

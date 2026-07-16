@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2
+
+- Added automatic debounced live preview updates for crop, zoom, blur, darkness, saturation and size controls.
+- Added a dedicated background selector with artwork blur/darkening or a freely selectable solid color.
+- Added random preview selection from Source Folder, a New Random Preview button and Generate Random Thumbnail.
+- Kept Generate Thumbnail(s) as the full-folder batch action.
+- Changed all combo-box popup menus to a black background with readable white text.
+- Added feedback for actions that need a selected video or history row.
+- Added automated wiring coverage for every named button plus Windows UI tests for the new thumbnail controls.
+
 ## 1.0.1
 
 - Fixed background tasks that could be collected before starting.
