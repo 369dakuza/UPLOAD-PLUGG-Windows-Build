@@ -256,8 +256,11 @@ class MainWindow(QMainWindow):
         worker.failed.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         worker.failed.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
+        # Release the strong worker reference before scheduling the QThread wrapper
+        # for deletion. Keeping this order deterministic prevents a rare Windows
+        # race where the dictionary retained an already-finished thread.
         thread.finished.connect(lambda current=thread: self.threads.pop(current, None))
+        thread.finished.connect(thread.deleteLater)
         self.threads[thread] = worker
         thread.start()
 

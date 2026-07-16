@@ -27,14 +27,21 @@ class BackgroundTaskTests(unittest.TestCase):
         window.threads = {}
         result = []
         loop = QEventLoop()
+        poll = QTimer()
 
         def done(value):
             result.append(value)
-            QTimer.singleShot(150, loop.quit)
 
+        def finish_when_cleaned_up():
+            if result and not window.threads:
+                loop.quit()
+
+        poll.timeout.connect(finish_when_cleaned_up)
+        poll.start(20)
         QTimer.singleShot(5000, loop.quit)
         window.run_task(lambda: 42, (), {"done": done, "failed": self.fail})
         loop.exec()
+        poll.stop()
         application.processEvents()
 
         self.assertEqual(result, [42])
