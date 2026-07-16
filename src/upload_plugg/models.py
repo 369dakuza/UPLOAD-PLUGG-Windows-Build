@@ -9,6 +9,11 @@ from uuid import uuid4
 from .constants import DEFAULT_CATEGORY_ID, DEFAULT_SCHEDULE_DAYS, DEFAULT_TIMEZONE
 
 
+LEGACY_AUTOMATIC_TAGS_TEMPLATE = (
+    "{ARTIST} type beat, {BEAT_NAME}, {PRODUCER}, {YEAR} type beat"
+)
+
+
 @dataclass
 class Preset:
     name: str = "Chief Keef Type Beat"
@@ -20,7 +25,7 @@ class Preset:
         "{BEAT_NAME}\n\nMust credit: {PRODUCER_CREDITS}\n\n"
         "Replace this example with your complete YouTube description."
     )
-    tags_template: str = "{ARTIST} type beat, {BEAT_NAME}, {PRODUCER}, {YEAR} type beat"
+    tags_template: str = ""
     category_id: str = DEFAULT_CATEGORY_ID
     made_for_kids: bool = False
     contains_synthetic_media: bool = False
@@ -42,7 +47,10 @@ class Preset:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Preset":
         allowed = cls.__dataclass_fields__.keys()
-        return cls(**{key: value for key, value in data.items() if key in allowed})
+        values = {key: value for key, value in data.items() if key in allowed}
+        if values.get("tags_template", "").strip() == LEGACY_AUTOMATIC_TAGS_TEMPLATE:
+            values["tags_template"] = ""
+        return cls(**values)
 
 
 @dataclass

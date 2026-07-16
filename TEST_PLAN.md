@@ -9,7 +9,7 @@ $env:PYTHONPATH = "$PWD\src"
 python -m unittest discover -s tests -v
 ```
 
-The suite covers filename parsing, collaborator extraction, Unicode, title/description rendering, producer credits, unresolved placeholders, tag deduplication, natural sorting, scan limits, SHA-256, chronological scheduling, Europe/Berlin DST transitions, UTC conversion, crop calculations, exact 1920 × 1080 JPG output, file-size compliance, overwrite protection, settings persistence, SQLite migration, duplicates, queue recovery, non-repeating thumbnail pools and the offline mock YouTube service.
+The suite covers filename parsing, collaborator extraction, Unicode, title/description rendering, automatic artist hashtags, custom tag handling and legacy-tag migration, producer credits, Made for kids upload payloads, unresolved placeholders, tag deduplication, dark Windows combo-box popups, button wiring, natural sorting, scan limits, SHA-256, chronological scheduling, Europe/Berlin DST transitions, UTC conversion, crop calculations, exact 1920 × 1080 JPG output, file-size compliance, overwrite protection, settings persistence, SQLite migration, duplicates, queue recovery, non-repeating thumbnail pools and the offline mock YouTube service.
 
 ## Manual Windows checklist
 
@@ -42,4 +42,3 @@ Use a dedicated private test video and channel. Never run this automatically.
 10. Delete private test videos manually from YouTube Studio after recording results.
 
 Record OS build, UPLOAD PLUGG version, credential project audit state, test time, expected result, actual result, screenshots and sanitized logs. Never attach the OAuth client JSON or token material.
-

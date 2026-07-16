@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.3
+
+- Removed the legacy automatically generated `{ARTIST}`, beat-name, producer and year tag list from existing and new presets while preserving every custom tag list.
+- Added a live YouTube tag-usage counter and blocks saving presets above YouTube's 500-character calculation.
+- Added exactly three automatic description hashtags derived from the Artist field or preset name: artist, artist type beat and artist type beat plus publication year.
+- Preserved dynamic `Prod. Dakuza & Collaborator` credits in generated descriptions.
+- Added a per-preset Made for kids switch with an explicit comments-enabled/comments-disabled status.
+- Forced every combo box to use a Qt-owned dark popup with a black background and white text on Windows.
+- Added metadata, migration, audience-payload and Windows UI coverage for the new behavior.
+
 ## 1.0.2
 
 - Added automatic debounced live preview updates for crop, zoom, blur, darkness, saturation and size controls.

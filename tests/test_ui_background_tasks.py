@@ -5,12 +5,13 @@ from pathlib import Path
 try:
     from PIL import Image
     from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 
     from upload_plugg.paths import AppPaths
     from upload_plugg.settings import SettingsStore
     from upload_plugg.ui.main_window import MainWindow
-    from upload_plugg.ui.pages import ThumbnailGeneratorPage
+    from upload_plugg.ui.pages import PresetsPage, ThumbnailGeneratorPage
 
     QT_AVAILABLE = True
 except ImportError:
@@ -69,6 +70,29 @@ class BackgroundTaskTests(unittest.TestCase):
             self.assertIn("New Random Preview", button_texts)
             self.assertIn("Generate Random Thumbnail", button_texts)
             page.preview_timer.stop()
+            page.deleteLater()
+            application.processEvents()
+
+    def test_presets_page_custom_tags_kids_toggle_and_dark_popup(self):
+        application = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.discover(Path(directory)).ensure()
+            settings = SettingsStore(paths)
+            settings.load()
+            page = PresetsPage(settings)
+            page.tags.setPlainText("Chief Keef, Glo Gang type beat")
+            page.made_for_kids.setChecked(True)
+
+            preset = page.value()
+            popup_palette = page.selector.view().palette()
+
+            self.assertEqual(preset.tags_template, "Chief Keef, Glo Gang type beat")
+            self.assertTrue(preset.made_for_kids)
+            self.assertIn("comments will be disabled", page.audience_status.text())
+            self.assertIn("/ 500", page.tag_counter.text())
+            self.assertIn("#ChiefKeefTypeBeat", page.hashtag_preview.text())
+            self.assertEqual(popup_palette.color(QPalette.Base).name(), "#080a0d")
+            self.assertEqual(popup_palette.color(QPalette.Text).name(), "#ffffff")
             page.deleteLater()
             application.processEvents()
 

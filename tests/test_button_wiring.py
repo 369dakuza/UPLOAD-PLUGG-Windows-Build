@@ -58,6 +58,12 @@ class ButtonWiringTests(unittest.TestCase):
         self.assertIn("QComboBox QAbstractItemView", theme)
         self.assertIn("background-color: #080a0d", theme)
         self.assertIn("color: #ffffff", theme)
+        pages = (PROJECT_ROOT / "src" / "upload_plugg" / "ui" / "pages.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("class DarkComboBox(QComboBox)", pages)
+        self.assertIn('popup.setObjectName("darkComboPopup")', pages)
+        self.assertNotIn("= QComboBox()", pages)
 
 
 if __name__ == "__main__":

@@ -6,12 +6,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from .models import Preset
+from .models import LEGACY_AUTOMATIC_TAGS_TEMPLATE, Preset
 from .paths import AppPaths
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "window": {"width": 1500, "height": 900, "last_page": 0},
     "appearance": {"reduce_motion": False},
     "upload": {"keep_awake": True, "max_retries": 5, "chunk_size_mb": 8},
@@ -35,7 +35,10 @@ class SettingsStore:
             return self.data
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
+            loaded, migrated = _migrate_settings(loaded)
             self.data = _deep_merge(deepcopy(DEFAULT_SETTINGS), loaded)
+            if migrated:
+                self.save()
         except (OSError, json.JSONDecodeError, TypeError):
             broken = self.path.with_suffix(".broken.json")
             try:
@@ -89,3 +92,19 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
             base[key] = value
     return base
 
+
+def _migrate_settings(data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    try:
+        version = int(data.get("version", 1))
+    except (TypeError, ValueError):
+        version = 1
+    if version >= 2:
+        return data, False
+    for preset in data.get("presets", []):
+        if not isinstance(preset, dict):
+            continue
+        if preset.get("tags_template", "").strip() == LEGACY_AUTOMATIC_TAGS_TEMPLATE:
+            preset["tags_template"] = ""
+        preset.setdefault("made_for_kids", False)
+    data["version"] = 2
+    return data, True

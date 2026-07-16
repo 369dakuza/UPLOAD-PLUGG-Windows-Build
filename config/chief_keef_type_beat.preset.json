@@ -5,7 +5,7 @@
   "second_artist": "",
   "title_template": "[FREE] {ARTIST} Type Beat - \"{BEAT_NAME}\"",
   "description_template": "{BEAT_NAME}\n\nMust credit: {PRODUCER_CREDITS}\n\nReplace this example with your complete YouTube description.",
-  "tags_template": "{ARTIST} type beat, {BEAT_NAME}, {PRODUCER}, {YEAR} type beat",
+  "tags_template": "",
   "category_id": "10",
   "made_for_kids": false,
   "contains_synthetic_media": false,

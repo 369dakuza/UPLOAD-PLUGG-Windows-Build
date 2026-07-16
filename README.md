@@ -1,6 +1,6 @@
 # UPLOAD PLUGG
 
-UPLOAD PLUGG 1.0.2 is a Windows 10 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one permanent dark-red interface.
+UPLOAD PLUGG 1.0.3 is a Windows 10 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one permanent dark-red interface.
 
 **Powered by: Dakuza**
 
@@ -8,7 +8,8 @@ UPLOAD PLUGG 1.0.2 is a Windows 10 64-bit desktop application for preparing and 
 
 - Official Google OAuth desktop flow; no Google password, cookies or recovery codes are requested.
 - MP4 folder scan, natural numeric ordering, editable beat/collaborator parsing and 1–30 item batches.
-- Preset-based titles, descriptions, tags and `Prod. Dakuza & Collaborator` credit generation.
+- Preset-based titles, custom 500-character YouTube tags, automatic artist hashtags and `Prod. Dakuza & Collaborator` credit generation.
+- Per-preset Made for kids control; the default is off so comments remain available.
 - Europe/Berlin scheduling with daylight-saving handling and per-item preview.
 - Resumable sequential YouTube upload, exponential retry with jitter, custom thumbnail application and Windows keep-awake.
 - 1920 × 1080 JPG generator with square-center/blurred-sides, crop, fit and solid-side modes.
@@ -55,4 +56,4 @@ End screens, cards, YouTube Studio checks and monetization review are not expose
 
 ## Verification status
 
-The 25 platform-independent automated tests pass in the supplied development environment. Python syntax compilation and project checks pass. A real Windows GUI run, PyInstaller build, Inno Setup compile, OAuth authorization and live private YouTube upload require Windows, the owner's Google Cloud credentials and an opt-in test channel; exact steps are in `TEST_PLAN.md`.
+The automated test suite covers metadata, preset migration, audience settings, button wiring, Windows popup styling, thumbnail processing, storage, scheduling and upload payload construction. Python syntax compilation and project checks pass. OAuth authorization and a live private YouTube upload require the owner's Google Cloud credentials and an opt-in test channel; exact steps are in `TEST_PLAN.md`.

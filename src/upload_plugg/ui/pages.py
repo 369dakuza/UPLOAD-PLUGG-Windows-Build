@@ -7,7 +7,7 @@ from datetime import date, datetime, time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QTime, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListView,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -40,13 +41,20 @@ from PySide6.QtWidgets import (
 )
 
 from .. import APP_NAME, APP_VERSION, CREATOR_CREDIT
-from ..constants import MAX_BATCH_SIZE
+from ..constants import MAX_BATCH_SIZE, YOUTUBE_TAGS_LIMIT
 from ..core.dry_run import export_dry_run
 from ..core.filename_parser import parse_filename
 from ..core.random_pool import assign_without_repeats, image_pool
 from ..core.scanner import scan_videos, sha256_file
 from ..core.scheduling import ScheduleError, calculate_schedule
-from ..core.templates import generate_metadata, migrate_credit_line, producer_credits, tag_length
+from ..core.templates import (
+    description_hashtags,
+    generate_metadata,
+    migrate_credit_line,
+    producer_credits,
+    split_tags,
+    tag_length,
+)
 from ..core.thumbnails import (
     ThumbnailOptions,
     generate_batch,
@@ -77,6 +85,39 @@ def panel() -> QFrame:
     frame = QFrame()
     frame.setObjectName("panel")
     return frame
+
+
+class DarkComboBox(QComboBox):
+    """Use a Qt-owned list popup so Windows cannot replace it with a white native menu."""
+
+    def __init__(self, *args: object, **kwargs: object):
+        super().__init__(*args, **kwargs)
+        popup = QListView()
+        popup.setObjectName("darkComboPopup")
+        popup.setUniformItemSizes(True)
+        popup.setAutoFillBackground(True)
+        popup.setStyleSheet(
+            "QListView { background-color: #080a0d; color: #ffffff; "
+            "border: 1px solid #343740; outline: 0; padding: 4px; }"
+            "QListView::item { color: #ffffff; min-height: 28px; padding: 5px 9px; }"
+            "QListView::item:selected { background-color: #a50f22; color: #ffffff; }"
+            "QListView::item:hover { background-color: #321018; color: #ffffff; }"
+        )
+        palette = popup.palette()
+        palette.setColor(QPalette.Base, QColor("#080a0d"))
+        palette.setColor(QPalette.Window, QColor("#080a0d"))
+        palette.setColor(QPalette.Text, QColor("#ffffff"))
+        palette.setColor(QPalette.WindowText, QColor("#ffffff"))
+        palette.setColor(QPalette.Highlight, QColor("#a50f22"))
+        palette.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+        popup.setPalette(palette)
+        self.setView(popup)
+
+    def showPopup(self) -> None:
+        super().showPopup()
+        popup_window = self.view().window()
+        popup_window.setAutoFillBackground(True)
+        popup_window.setPalette(self.view().palette())
 
 
 def hash_upload_items(items: list[UploadItem]) -> list[UploadItem]:
@@ -179,13 +220,13 @@ class UploadGeneratorPage(QWidget):
         self.batch = QSpinBox()
         self.batch.setRange(1, MAX_BATCH_SIZE)
         self.batch.setValue(10)
-        self.sorting = QComboBox()
+        self.sorting = DarkComboBox()
         self.sorting.addItems([
             "Natural numeric order", "Name, A–Z", "Name, Z–A", "Date created, oldest first",
             "Date created, newest first", "Date modified, oldest first", "Date modified, newest first",
             "Manual order",
         ])
-        self.preset = QComboBox()
+        self.preset = DarkComboBox()
         self.refresh_presets()
         scan = QPushButton("Scan Folder")
         scan.clicked.connect(self.scan)
@@ -602,11 +643,11 @@ class ThumbnailGeneratorPage(QWidget):
         source_folder.clicked.connect(self.select_source_folder)
         output_button = QPushButton("Output Folder")
         output_button.clicked.connect(self.select_output)
-        self.mode = QComboBox()
+        self.mode = DarkComboBox()
         self.mode.addItem("Square Center + Blurred Sides", "square_blur")
         self.mode.addItem("Crop to Full 16:9", "crop_16_9")
         self.mode.addItem("Fit Entire Image + Background Fill", "fit_background")
-        self.background_mode = QComboBox()
+        self.background_mode = DarkComboBox()
         self.background_mode.addItem("Artwork · Blur / Darken", "artwork")
         self.background_mode.addItem("Solid Color", "solid")
         self.color_button = QPushButton("Choose Background Color")
@@ -882,7 +923,7 @@ class PresetsPage(QWidget):
         self.settings = settings
         root, _ = page_header("Presets", "Reusable metadata, credits, tags and schedule defaults")
         chooser = QHBoxLayout()
-        self.selector = QComboBox()
+        self.selector = DarkComboBox()
         self.selector.currentTextChanged.connect(self.load_selected)
         chooser.addWidget(QLabel("Preset"))
         chooser.addWidget(self.selector, 1)
@@ -916,24 +957,52 @@ class PresetsPage(QWidget):
         self.title_template = QLineEdit()
         self.tags = QPlainTextEdit()
         self.tags.setMaximumHeight(90)
-        self.separator = QComboBox()
+        self.tags.setPlaceholderText(
+            "Paste your own comma-separated YouTube tags here. Nothing is added automatically."
+        )
+        self.tags.textChanged.connect(self.update_tag_counter)
+        self.tag_counter = QLabel()
+        self.tag_counter.setObjectName("muted")
+        tags_box = QWidget()
+        tags_layout = QVBoxLayout(tags_box)
+        tags_layout.setContentsMargins(0, 0, 0, 0)
+        tags_layout.setSpacing(4)
+        tags_layout.addWidget(self.tags)
+        tags_layout.addWidget(self.tag_counter)
+        self.separator = DarkComboBox()
         self.separator.addItems(["&", "x"])
+        self.made_for_kids = QCheckBox("Made for kids")
+        self.made_for_kids.toggled.connect(self.update_audience_status)
+        self.audience_status = QLabel()
+        audience_box = QWidget()
+        audience_layout = QVBoxLayout(audience_box)
+        audience_layout.setContentsMargins(0, 0, 0, 0)
+        audience_layout.setSpacing(3)
+        audience_layout.addWidget(self.made_for_kids)
+        audience_layout.addWidget(self.audience_status)
         self.synthetic_media = QCheckBox("Contains realistic altered or synthetic media")
         self.preset_timezone = QLineEdit("Europe/Berlin")
         self.preset_time = QLineEdit("18:00")
         self.preset_days = QLineEdit("Tue, Thu, Fri, Sun")
         self.preset_batch = QSpinBox(); self.preset_batch.setRange(1, 30)
-        for label, widget in [("Name", self.name), ("Producer", self.producer), ("Artist", self.artist), ("Second artist", self.second_artist), ("Title template", self.title_template), ("Tags", self.tags), ("Credit separator", self.separator), ("Schedule days", self.preset_days), ("Schedule time", self.preset_time), ("Timezone", self.preset_timezone), ("Default batch", self.preset_batch), ("YouTube disclosure", self.synthetic_media)]:
+        for label, widget in [("Name", self.name), ("Producer", self.producer), ("Artist", self.artist), ("Second artist", self.second_artist), ("Title template", self.title_template), ("Custom YouTube tags", tags_box), ("Credit separator", self.separator), ("Audience", audience_box), ("Schedule days", self.preset_days), ("Schedule time", self.preset_time), ("Timezone", self.preset_timezone), ("Default batch", self.preset_batch), ("YouTube disclosure", self.synthetic_media)]:
             form.addRow(label, widget)
         body.addWidget(meta, 1)
         description_box = QGroupBox("Description Template")
         description_layout = QVBoxLayout(description_box)
-        hint = QLabel("Use Must credit: {PRODUCER_CREDITS} so collaborator names are added safely.")
+        hint = QLabel(
+            "Use Must credit: {PRODUCER_CREDITS} so collaborator names are added safely. "
+            "The three ranking hashtags below are inserted automatically at the top."
+        )
         hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        self.hashtag_preview = QLabel()
+        self.hashtag_preview.setObjectName("statusGood")
         self.description = QPlainTextEdit()
         migrate = QPushButton("Offer Credit Placeholder Migration")
         migrate.clicked.connect(self.migrate)
         description_layout.addWidget(hint)
+        description_layout.addWidget(self.hashtag_preview)
         description_layout.addWidget(self.description, 1)
         description_layout.addWidget(migrate)
         body.addWidget(description_box, 2)
@@ -943,6 +1012,9 @@ class PresetsPage(QWidget):
         save.clicked.connect(self.save)
         root.addWidget(save)
         self.setLayout(root)
+        self.artist.textChanged.connect(self.update_hashtag_preview)
+        self.name.textChanged.connect(self.update_hashtag_preview)
+        self.update_audience_status(False)
         self.refresh()
 
     def refresh(self) -> None:
@@ -966,12 +1038,15 @@ class PresetsPage(QWidget):
                 self.description.setPlainText(preset.description_template)
                 self.tags.setPlainText(preset.tags_template)
                 self.separator.setCurrentText(preset.credit_separator)
+                self.made_for_kids.setChecked(preset.made_for_kids)
                 self.synthetic_media.setChecked(preset.contains_synthetic_media)
                 self.preset_timezone.setText(preset.timezone)
                 self.preset_time.setText(preset.schedule_time)
                 day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
                 self.preset_days.setText(", ".join(day_names[day] for day in preset.schedule_days))
                 self.preset_batch.setValue(preset.default_batch_size)
+                self.update_tag_counter()
+                self.update_hashtag_preview()
                 return
 
     def value(self) -> Preset:
@@ -984,6 +1059,7 @@ class PresetsPage(QWidget):
         base.description_template = self.description.toPlainText()
         base.tags_template = self.tags.toPlainText()
         base.credit_separator = self.separator.currentText()
+        base.made_for_kids = self.made_for_kids.isChecked()
         base.contains_synthetic_media = self.synthetic_media.isChecked()
         base.timezone = self.preset_timezone.text().strip() or "Europe/Berlin"
         base.schedule_time = self.preset_time.text().strip() or "18:00"
@@ -994,11 +1070,15 @@ class PresetsPage(QWidget):
         return base
 
     def save(self) -> None:
+        if not self.tags_are_valid():
+            return
         self.settings.upsert_preset(self.value())
         self.refresh()
         self.presets_changed.emit()
 
     def duplicate(self) -> None:
+        if not self.tags_are_valid():
+            return
         preset = self.value()
         preset.name = preset.name + " Copy"
         self.settings.upsert_preset(preset)
@@ -1053,6 +1133,39 @@ class PresetsPage(QWidget):
             return
         if QMessageBox.question(self, APP_NAME, "Replace the fixed producer credit with {PRODUCER_CREDITS}?") == QMessageBox.Yes:
             self.description.setPlainText(updated)
+
+    def update_tag_counter(self) -> None:
+        used = tag_length(split_tags(self.tags.toPlainText()))
+        self.tag_counter.setText(f"YouTube tag usage · {used} / {YOUTUBE_TAGS_LIMIT}")
+        color = "#ff7183" if used > YOUTUBE_TAGS_LIMIT else "#858a95"
+        self.tag_counter.setStyleSheet(f"color: {color};")
+
+    def tags_are_valid(self) -> bool:
+        used = tag_length(split_tags(self.tags.toPlainText()))
+        if used <= YOUTUBE_TAGS_LIMIT:
+            return True
+        QMessageBox.warning(
+            self,
+            APP_NAME,
+            f"Your custom YouTube tags use {used} of {YOUTUBE_TAGS_LIMIT} allowed characters. "
+            "Shorten the tag list before saving this preset.",
+        )
+        return False
+
+    def update_hashtag_preview(self) -> None:
+        preset = Preset(name=self.name.text(), artist=self.artist.text())
+        hashtags = description_hashtags(preset, datetime.now().astimezone().year)
+        self.hashtag_preview.setText(
+            "Automatic description hashtags · " + (" ".join(hashtags) or "Enter an artist")
+        )
+
+    def update_audience_status(self, made_for_kids: bool) -> None:
+        if made_for_kids:
+            self.audience_status.setText("ON · YouTube comments will be disabled")
+            self.audience_status.setStyleSheet("color: #f0b84b;")
+        else:
+            self.audience_status.setText("OFF · Not made for kids · comments stay enabled")
+            self.audience_status.setStyleSheet("color: #59c98b;")
 
 
 class SchedulePage(QWidget):

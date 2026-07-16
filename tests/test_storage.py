@@ -1,9 +1,10 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from upload_plugg.database import Database
-from upload_plugg.models import UploadItem, UploadResult
+from upload_plugg.models import LEGACY_AUTOMATIC_TAGS_TEMPLATE, UploadItem, UploadResult
 from upload_plugg.paths import AppPaths
 from upload_plugg.settings import SettingsStore
 
@@ -22,6 +23,29 @@ class StorageTests(unittest.TestCase):
             loaded = SettingsStore(paths)
             self.assertEqual(loaded.load()["folders"]["videos"], "C:/Übersicht/Beats")
 
+    def test_settings_migration_removes_only_legacy_automatic_tags(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = self.paths(Path(directory))
+            store = SettingsStore(paths)
+            store.path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "presets": [
+                            {"name": "Legacy", "tags_template": LEGACY_AUTOMATIC_TAGS_TEMPLATE},
+                            {"name": "Custom", "tags_template": "Chief Keef, Glo Gang"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            loaded = store.load()
+
+            self.assertEqual(loaded["version"], 2)
+            self.assertEqual(loaded["presets"][0]["tags_template"], "")
+            self.assertEqual(loaded["presets"][1]["tags_template"], "Chief Keef, Glo Gang")
+
     def test_database_migration_and_duplicate_detection(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(self.paths(Path(directory)))
@@ -39,4 +63,3 @@ class StorageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

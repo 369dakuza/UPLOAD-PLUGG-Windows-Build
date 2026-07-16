@@ -47,6 +47,44 @@ def tag_length(tags: list[str]) -> int:
     return sum(len(tag) + (2 if " " in tag else 0) for tag in tags) + max(0, len(tags) - 1)
 
 
+def hashtag_name(value: str) -> str:
+    parts = re.findall(r"[^\W_]+", value, flags=re.UNICODE)
+    return "".join(
+        part[:1].upper() + part[1:] if part.islower() else part
+        for part in parts
+    )
+
+
+def artist_for_hashtags(preset: Preset) -> str:
+    if preset.artist.strip():
+        return preset.artist.strip()
+    return re.sub(
+        r"(?i)\s*(?:[-–—]\s*)?type\s+beat(?:\s+preset)?\s*$",
+        "",
+        preset.name,
+    ).strip()
+
+
+def description_hashtags(preset: Preset, year: str | int) -> list[str]:
+    artist = hashtag_name(artist_for_hashtags(preset))
+    if not artist:
+        return []
+    return [
+        f"#{artist}",
+        f"#{artist}TypeBeat",
+        f"#{artist}TypeBeat{year}",
+    ]
+
+
+def prepend_description_hashtags(description: str, hashtags: list[str]) -> str:
+    if not hashtags:
+        return description.strip()
+    hashtag_line = " ".join(hashtags)
+    if description.lstrip().casefold().startswith(hashtag_line.casefold()):
+        return description.strip()
+    return f"{hashtag_line}\n\n{description.strip()}" if description.strip() else hashtag_line
+
+
 def values_for_item(
     item: UploadItem,
     preset: Preset,
@@ -78,7 +116,11 @@ def values_for_item(
 def generate_metadata(item: UploadItem, preset: Preset) -> UploadItem:
     values = values_for_item(item, preset)
     item.display_title = render_template(preset.title_template, values)
-    item.description = render_template(preset.description_template, values)
+    description = render_template(preset.description_template, values)
+    item.description = prepend_description_hashtags(
+        description,
+        description_hashtags(preset, values["YEAR"]),
+    )
     item.tags = split_tags(render_template(preset.tags_template, values))
     item.preset_name = preset.name
     return item
@@ -99,4 +141,3 @@ def _parse_datetime(value: str) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
-

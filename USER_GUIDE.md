@@ -10,10 +10,10 @@ Keep finished videos together as MP4 files. A plain file such as `Hellcat.mp4` b
 2. Choose 1–30 videos and a sorting mode. Natural order places `1`, `2`, `10` correctly.
 3. Select a preset and press **Scan Folder**.
 4. Review/edit Beat Name, Collaborator and Generated Title directly in the table.
-5. Edit the full description and comma-separated tags in the details panel.
+5. Edit the full description and your own comma-separated YouTube tags in the details panel.
 6. Press **Generate Metadata** whenever you want to reset rows from the active preset.
 
-The default title is `[FREE] Chief Keef Type Beat - "{BEAT_NAME}"`. The description must use `Must credit: {PRODUCER_CREDITS}`. That produces `Prod. Dakuza` alone or `Prod. Dakuza & Stixx` with a collaborator.
+The default title is `[FREE] Chief Keef Type Beat - "{BEAT_NAME}"`. The description must use `Must credit: {PRODUCER_CREDITS}`. That produces `Prod. Dakuza` alone or `Prod. Dakuza & Stixx` with a collaborator. UPLOAD PLUGG adds `#ChiefKeef #ChiefKeefTypeBeat #ChiefKeefTypeBeat{YEAR}` automatically above the description. The Presets page accepts your own YouTube tag list, shows its 500-character usage and does not add generic tags automatically. Keep **Made for kids** off for normal type beats so YouTube comments remain available.
 
 ## Thumbnails
 
@@ -40,4 +40,3 @@ Minimize to the tray to keep working. Tray actions open the app, pause/resume th
 ## After upload
 
 Open **Upload History** to copy/open links and export records. End screens, cards, monetization and Studio checks are manual because the official upload API does not configure them. Open the generated Studio edit link and complete those items before final publication.
-
