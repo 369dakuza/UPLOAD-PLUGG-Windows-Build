@@ -98,6 +98,8 @@ class UploadItem:
     file_size: int = 0
     modified_ns: int = 0
     file_hash: str = ""
+    metadata_signature: str = ""
+    manual_metadata_fields: list[str] = field(default_factory=list)
 
     @property
     def filename(self) -> str:

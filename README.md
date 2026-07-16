@@ -1,6 +1,6 @@
 # UPLOAD PLUGG
 
-UPLOAD PLUGG 1.0.4 is a Windows 10 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one permanent dark-red interface.
+UPLOAD PLUGG 1.1.0 is a Windows 10/11 64-bit desktop application for preparing and sequentially uploading finished type-beat videos to YouTube. It combines a local batch workflow, metadata templates, scheduling, duplicate warnings, upload history and an offline thumbnail generator in one premium dark-crimson interface.
 
 **Powered by: Dakuza**
 

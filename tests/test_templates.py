@@ -5,7 +5,9 @@ from upload_plugg.core.templates import (
     generate_metadata,
     migrate_credit_line,
     producer_credits,
+    preset_metadata_signature,
     split_tags,
+    synchronize_metadata,
     unresolved_placeholders,
 )
 from upload_plugg.models import Preset, UploadItem
@@ -41,6 +43,34 @@ class TemplateTests(unittest.TestCase):
             item.tags,
             ["Chief Keef", "Glo Gang type beat", "Chicago trap"],
         )
+
+    def test_stale_queue_metadata_is_synchronized_with_current_preset(self):
+        item = UploadItem(
+            "C:/Beats/Hellcat.mp4",
+            "Hellcat",
+            description="Replace this example with your complete YouTube description.",
+            tags=["Chief Keef type beat", "Hellcat", "Dakuza", "2026 type beat"],
+        )
+        preset = Preset(tags_template="")
+
+        synchronize_metadata(item, preset)
+
+        self.assertEqual(item.tags, [])
+        self.assertIn("www.instagram.com/369dakuza", item.description)
+        self.assertEqual(item.metadata_signature, preset_metadata_signature(preset))
+
+    def test_manual_tags_survive_other_preset_metadata_updates(self):
+        item = UploadItem(
+            "C:/Beats/Hellcat.mp4",
+            "Hellcat",
+            tags=["My exact tag"],
+            manual_metadata_fields=["tags"],
+        )
+
+        synchronize_metadata(item, Preset(tags_template="Preset tag"))
+
+        self.assertEqual(item.tags, ["My exact tag"])
+        self.assertIn("Chief Keef", item.display_title)
 
     def test_three_description_hashtags_use_artist_and_publication_year(self):
         item = UploadItem(

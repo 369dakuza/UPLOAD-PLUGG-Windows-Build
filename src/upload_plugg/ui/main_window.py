@@ -4,7 +4,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QThread, QTimer, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QSize, QThread, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QSystemTrayIcon,
     QVBoxLayout,
@@ -41,6 +42,9 @@ from .pages import (
     ThumbnailGeneratorPage,
     UploadGeneratorPage,
 )
+from .components import ActionButton, ProgressStrip
+from .design import SIDEBAR_WIDTH
+from .icons import NAV_ICONS, line_icon
 from .workers import FunctionWorker, UploadQueueWorker
 
 
@@ -75,8 +79,10 @@ class MainWindow(QMainWindow):
         self.upload_thread: QThread | None = None
         self.upload_worker: UploadQueueWorker | None = None
         self.page_animation: QPropertyAnimation | None = None
+        self.nav_animation: QPropertyAnimation | None = None
         self.generated_thumbnail_count = 0
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
+        self.setMinimumSize(1120, 700)
         self.resize(
             settings.data["window"].get("width", 1500),
             settings.data["window"].get("height", 900),
@@ -104,25 +110,37 @@ class MainWindow(QMainWindow):
         outer.setSpacing(0)
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(225)
+        sidebar.setFixedWidth(SIDEBAR_WIDTH)
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(14, 20, 14, 14)
-        logo = QLabel(APP_NAME)
-        logo.setObjectName("appName")
-        sidebar_layout.addWidget(logo)
+        sidebar_layout.setContentsMargins(15, 18, 15, 14)
+        brand = QHBoxLayout()
+        brand.setSpacing(6)
+        logo_upload = QLabel("UPLOAD")
+        logo_upload.setObjectName("brandUpload")
+        logo_plugg = QLabel("PLUGG")
+        logo_plugg.setObjectName("brandPlugg")
+        brand.addWidget(logo_upload)
+        brand.addWidget(logo_plugg)
+        brand.addStretch()
+        sidebar_layout.addLayout(brand)
         tag = QLabel("HIGH-SPEED CREATOR WORKFLOW")
-        tag.setObjectName("muted")
-        tag.setStyleSheet("font-size:8pt; letter-spacing:1px")
+        tag.setObjectName("brandTag")
         sidebar_layout.addWidget(tag)
-        sidebar_layout.addSpacing(20)
+        sidebar_layout.addSpacing(22)
         self.nav_buttons: list[QPushButton] = []
         for index, label in enumerate(self.NAVIGATION):
             button = QPushButton(label)
             button.setObjectName("navButton")
             button.setCheckable(True)
+            button.setIcon(line_icon(NAV_ICONS[label], size=19))
+            button.setIconSize(QSize(19, 19))
             button.clicked.connect(lambda _checked=False, i=index: self.navigate(i))
             sidebar_layout.addWidget(button)
             self.nav_buttons.append(button)
+        self.nav_indicator = QFrame(sidebar)
+        self.nav_indicator.setObjectName("navIndicator")
+        self.nav_indicator.setGeometry(0, 0, 3, 38)
+        self.nav_indicator.raise_()
         sidebar_layout.addStretch()
         credit = QLabel(CREATOR_CREDIT)
         credit.setObjectName("credit")
@@ -140,7 +158,7 @@ class MainWindow(QMainWindow):
         self.connection_label.setObjectName("statusWarn")
         self.internet_label = QLabel("● Checking internet")
         self.internet_label.setObjectName("muted")
-        self.connect_button = QPushButton("Connect YouTube Channel")
+        self.connect_button = ActionButton("Connect YouTube Channel", "secondary", "link")
         self.connect_button.clicked.connect(self.connect_channel)
         top_layout.addWidget(self.connection_label)
         top_layout.addSpacing(16)
@@ -150,10 +168,13 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.connect_button)
         content.addWidget(topbar)
 
+        self.progress_strip = ProgressStrip()
+        content.addWidget(self.progress_strip)
+
         self.stack = QStackedWidget()
-        self.dashboard = DashboardPage(self.database)
+        self.dashboard = DashboardPage(self.database, self.settings)
         self.upload_page = UploadGeneratorPage(self.settings, self.database, self.paths)
-        self.thumbnail_page = ThumbnailGeneratorPage(self.settings, self.paths)
+        self.thumbnail_page = ThumbnailGeneratorPage(self.settings, self.paths, self.database)
         self.presets_page = PresetsPage(self.settings)
         self.schedule_page = SchedulePage()
         self.history_page = HistoryPage(self.database, self.paths)
@@ -167,7 +188,12 @@ class MainWindow(QMainWindow):
             layout = QVBoxLayout(wrapper)
             layout.setContentsMargins(24, 20, 24, 20)
             layout.addWidget(page)
-            self.stack.addWidget(wrapper)
+            scroll = QScrollArea()
+            scroll.setObjectName("contentSurface")
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setWidget(wrapper)
+            self.stack.addWidget(scroll)
         content.addWidget(self.stack, 1)
         outer.addLayout(content, 1)
         self.setCentralWidget(root)
@@ -181,9 +207,10 @@ class MainWindow(QMainWindow):
         self.upload_page.request_task.connect(self.run_task)
         self.thumbnail_page.request_task.connect(self.run_task)
         self.upload_page.request_upload.connect(self.start_upload_queue)
+        self.upload_page.request_cancel.connect(self.cancel_queue)
         self.upload_page.queue_changed.connect(self.refresh_dashboard)
         self.thumbnail_page.generated.connect(self.thumbnails_generated)
-        self.presets_page.presets_changed.connect(self.upload_page.refresh_presets)
+        self.presets_page.presets_changed.connect(self.upload_page.presets_updated)
         self.settings_page.connect_requested.connect(self.connect_channel)
         self.settings_page.disconnect_requested.connect(self.disconnect_channel)
         self.settings_page.support_bundle_requested.connect(self.export_support_bundle)
@@ -228,6 +255,7 @@ class MainWindow(QMainWindow):
             animation.start()
         for i, button in enumerate(self.nav_buttons):
             button.setChecked(i == index)
+        QTimer.singleShot(0, lambda current=index: self._move_nav_indicator(current))
         self.settings.data["window"]["last_page"] = index
         if index == 0:
             self.refresh_dashboard()
@@ -236,14 +264,36 @@ class MainWindow(QMainWindow):
         elif index == 6:
             self.logs_page.refresh()
 
+    def _move_nav_indicator(self, index: int) -> None:
+        if not 0 <= index < len(self.nav_buttons):
+            return
+        button = self.nav_buttons[index]
+        target = QRect(0, button.y() + 3, 3, max(24, button.height() - 6))
+        if self.settings.data["appearance"].get("reduce_motion", False):
+            self.nav_indicator.setGeometry(target)
+            return
+        if self.nav_animation is not None:
+            self.nav_animation.stop()
+        animation = QPropertyAnimation(self.nav_indicator, b"geometry", self)
+        animation.setDuration(140)
+        animation.setStartValue(self.nav_indicator.geometry())
+        animation.setEndValue(target)
+        animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.nav_animation = animation
+        animation.start()
+
     def run_task(self, function: object, args: object, callbacks: object) -> None:
         thread = QThread(self)
         positional = tuple(args) if isinstance(args, (tuple, list)) else ()
         worker = FunctionWorker(function, *positional)
+        task_label = callbacks.get("label", "") if isinstance(callbacks, dict) else ""
+        if task_label:
+            self.progress_strip.start(str(task_label), bool(callbacks.get("progress")))
         progress_callback = callbacks.get("progress") if isinstance(callbacks, dict) else None
         if callable(progress_callback):
             worker.progress.connect(progress_callback)
             worker.kwargs["progress"] = lambda current, total: worker.progress.emit(current, total)
+            worker.progress.connect(self.progress_strip.update_progress)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         done = callbacks.get("done") if isinstance(callbacks, dict) else None
@@ -252,6 +302,9 @@ class MainWindow(QMainWindow):
             worker.finished.connect(done)
         if callable(failed):
             worker.failed.connect(failed)
+        if task_label:
+            worker.finished.connect(lambda _result, label=str(task_label): self._task_finished(label))
+            worker.failed.connect(lambda message, label=str(task_label): self._task_failed(label, message))
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -263,6 +316,14 @@ class MainWindow(QMainWindow):
         thread.finished.connect(thread.deleteLater)
         self.threads[thread] = worker
         thread.start()
+
+    def _task_finished(self, label: str) -> None:
+        self.progress_strip.finish(f"{label} complete", True)
+        QTimer.singleShot(1200, self.progress_strip.hide)
+
+    def _task_failed(self, label: str, _message: str) -> None:
+        self.progress_strip.finish(f"{label} failed", False)
+        QTimer.singleShot(2500, self.progress_strip.hide)
 
     def connect_channel(self) -> None:
         if self.upload_thread and self.upload_thread.isRunning():
@@ -386,21 +447,49 @@ class MainWindow(QMainWindow):
         self.upload_worker.moveToThread(self.upload_thread)
         self.upload_thread.started.connect(self.upload_worker.run)
         self.upload_worker.item_progress.connect(self.upload_page.update_progress)
+        self.upload_worker.item_progress.connect(self.upload_progress)
         self.upload_worker.item_finished.connect(self.upload_page.update_result)
         self.upload_worker.failed.connect(lambda message: QMessageBox.critical(self, APP_NAME, message))
         self.upload_worker.queue_finished.connect(self.queue_finished)
         self.upload_worker.queue_finished.connect(self.upload_thread.quit)
         self.upload_thread.finished.connect(self.upload_worker.deleteLater)
         self.upload_thread.start()
+        self.upload_page.upload_button.setEnabled(False)
+        self.upload_page.cancel_upload_button.setEnabled(True)
+        self.progress_strip.start(f"Uploading batch · {len(items)} video(s)", True)
         self.navigate(1)
         self.tray.showMessage(APP_NAME, f"Upload queue started with {len(items)} video(s).", QSystemTrayIcon.Information)
 
     def queue_finished(self, completed: int, failed: int) -> None:
+        self.upload_page.cancel_upload_button.setEnabled(False)
+        self.upload_page.upload_button.setEnabled(True)
+        self.progress_strip.finish(
+            f"Upload batch complete · {completed} completed · {failed} failed",
+            failed == 0,
+        )
+        QTimer.singleShot(2500, self.progress_strip.hide)
+        self.database.add_activity(
+            "upload",
+            "Upload batch completed" if failed == 0 else "Upload batch completed with errors",
+            f"{completed} completed · {failed} failed",
+            "success" if failed == 0 else "error",
+        )
         self.history_page.refresh()
         self.refresh_dashboard()
         message = f"Batch finished: {completed} completed, {failed} failed."
         self.tray.showMessage(APP_NAME, message, QSystemTrayIcon.Information if failed == 0 else QSystemTrayIcon.Warning)
         QMessageBox.information(self, APP_NAME, message + "\n\nEnd screens remain pending in YouTube Studio.")
+
+    def upload_progress(self, item_id: str, percent: int, stage: str) -> None:
+        selected = [item for item in self.upload_page.items if item.selected]
+        if not selected:
+            return
+        total = sum(item.progress if item.id != item_id else percent for item in selected)
+        overall = round(total / len(selected))
+        self.progress_strip.label.setText(stage)
+        self.progress_strip.bar.setRange(0, 100)
+        self.progress_strip.bar.setValue(overall)
+        self.progress_strip.percent.setText(f"{overall}%")
 
     def pause_queue(self) -> None:
         if self.upload_worker:

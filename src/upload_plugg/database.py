@@ -55,6 +55,20 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        """
+        CREATE TABLE IF NOT EXISTS activity_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          message TEXT NOT NULL,
+          detail TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'info',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_events(id DESC);
+        """,
+    ),
 ]
 
 
@@ -158,6 +172,27 @@ class Database:
         params.append(limit)
         with self._lock, closing(self.connect()) as connection, connection:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
+
+    def add_activity(
+        self,
+        kind: str,
+        message: str,
+        detail: str = "",
+        status: str = "info",
+    ) -> int:
+        with self._lock, closing(self.connect()) as connection, connection:
+            cursor = connection.execute(
+                "INSERT INTO activity_events(kind, message, detail, status) VALUES(?, ?, ?, ?)",
+                (kind, message, detail, status),
+            )
+            return int(cursor.lastrowid)
+
+    def list_activities(self, limit: int = 8) -> list[dict[str, Any]]:
+        with self._lock, closing(self.connect()) as connection, connection:
+            rows = connection.execute(
+                "SELECT * FROM activity_events ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def set_end_screen_done(self, upload_id: int, done: bool) -> None:
         with self._lock, closing(self.connect()) as connection, connection:

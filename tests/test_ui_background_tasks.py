@@ -9,9 +9,20 @@ try:
     from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 
     from upload_plugg.paths import AppPaths
+    from upload_plugg.database import Database
+    from upload_plugg.models import UploadItem
     from upload_plugg.settings import SettingsStore
     from upload_plugg.ui.main_window import MainWindow
-    from upload_plugg.ui.pages import PresetsPage, ThumbnailGeneratorPage
+    from upload_plugg.ui.pages import (
+        DashboardPage,
+        HistoryPage,
+        LogsPage,
+        PresetsPage,
+        SchedulePage,
+        SettingsPage,
+        ThumbnailGeneratorPage,
+        UploadGeneratorPage,
+    )
 
     QT_AVAILABLE = True
 except ImportError:
@@ -122,6 +133,58 @@ class BackgroundTaskTests(unittest.TestCase):
             self.assertIn("#ChiefKeefTypeBeat", page.hashtag_preview.text())
             self.assertEqual(popup_palette.color(QPalette.Base).name(), "#080a0d")
             self.assertEqual(popup_palette.color(QPalette.Text).name(), "#ffffff")
+            page.deleteLater()
+            application.processEvents()
+
+    def test_every_redesigned_page_constructs_offscreen(self):
+        application = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.discover(Path(directory)).ensure()
+            settings = SettingsStore(paths)
+            settings.load()
+            database = Database(paths)
+            pages = [
+                DashboardPage(database, settings),
+                UploadGeneratorPage(settings, database, paths),
+                ThumbnailGeneratorPage(settings, paths, database),
+                PresetsPage(settings),
+                SchedulePage(),
+                HistoryPage(database, paths),
+                LogsPage(paths),
+                SettingsPage(settings, paths),
+            ]
+
+            for page in pages:
+                page.resize(1280, 720)
+                page.show()
+                application.processEvents()
+                page.hide()
+            pages[2].preview_timer.stop()
+            for page in pages:
+                page.deleteLater()
+            application.processEvents()
+
+    def test_legacy_queue_tags_are_synchronized_before_upload_preview(self):
+        application = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            paths = AppPaths.discover(Path(directory)).ensure()
+            settings = SettingsStore(paths)
+            settings.load()
+            database = Database(paths)
+            database.save_queue([
+                UploadItem(
+                    "C:/Beats/Hellcat.mp4",
+                    "Hellcat",
+                    description="Replace this example with your complete YouTube description.",
+                    tags=["Chief Keef type beat", "Hellcat", "Dakuza", "2026 type beat"],
+                )
+            ])
+
+            page = UploadGeneratorPage(settings, database, paths)
+
+            self.assertEqual(page.items[0].tags, [])
+            self.assertIn("www.instagram.com/369dakuza", page.items[0].description)
+            self.assertEqual(page.detail_tags.text(), "")
             page.deleteLater()
             application.processEvents()
 

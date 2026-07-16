@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS activity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'info',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_events(id DESC);

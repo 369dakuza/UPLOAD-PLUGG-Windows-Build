@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Mapping
@@ -123,6 +125,52 @@ def generate_metadata(item: UploadItem, preset: Preset) -> UploadItem:
     )
     item.tags = split_tags(render_template(preset.tags_template, values))
     item.preset_name = preset.name
+    item.metadata_signature = preset_metadata_signature(preset)
+    item.manual_metadata_fields = []
+    return item
+
+
+def preset_metadata_signature(preset: Preset) -> str:
+    """Identify the preset inputs that affect rendered upload metadata."""
+
+    relevant = {
+        "name": preset.name,
+        "producer": preset.producer,
+        "artist": preset.artist,
+        "second_artist": preset.second_artist,
+        "title_template": preset.title_template,
+        "description_template": preset.description_template,
+        "tags_template": preset.tags_template,
+        "credit_separator": preset.credit_separator,
+    }
+    payload = json.dumps(relevant, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def synchronize_metadata(
+    item: UploadItem,
+    preset: Preset,
+    preserve_manual: bool = True,
+) -> UploadItem:
+    """Refresh stale queue metadata without silently overwriting manual edits."""
+
+    manual = set(item.manual_metadata_fields) if preserve_manual else set()
+    rendered = UploadItem(
+        source_path=item.source_path,
+        beat_name=item.beat_name,
+        collaborator=item.collaborator,
+        publish_at=item.publish_at,
+    )
+    generate_metadata(rendered, preset)
+    if "title" not in manual:
+        item.display_title = rendered.display_title
+    if "description" not in manual:
+        item.description = rendered.description
+    if "tags" not in manual:
+        item.tags = rendered.tags
+    item.preset_name = preset.name
+    item.metadata_signature = rendered.metadata_signature
+    item.manual_metadata_fields = sorted(manual)
     return item
 
 

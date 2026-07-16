@@ -94,6 +94,23 @@ class StorageTests(unittest.TestCase):
             database.save_queue([item])
             self.assertEqual(database.load_queue()[0].id, item.id)
 
+    def test_activity_events_are_persisted_with_real_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(self.paths(Path(directory)))
+            database.add_activity(
+                "metadata",
+                "Metadata generated",
+                "8 video(s)",
+                "success",
+            )
+
+            activity = database.list_activities(1)[0]
+
+            self.assertEqual(activity["kind"], "metadata")
+            self.assertEqual(activity["message"], "Metadata generated")
+            self.assertEqual(activity["detail"], "8 video(s)")
+            self.assertEqual(activity["status"], "success")
+
 
 if __name__ == "__main__":
     unittest.main()

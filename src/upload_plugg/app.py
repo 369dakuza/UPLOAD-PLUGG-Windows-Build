@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import APP_NAME, APP_VERSION
@@ -23,6 +25,10 @@ def main() -> int:
     application.setApplicationName(APP_NAME)
     application.setOrganizationName("Dakuza")
     application.setApplicationVersion(APP_VERSION)
+    resource_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+    icon = resource_root / "resources" / "upload_plugg.ico"
+    if icon.exists():
+        application.setWindowIcon(QIcon(str(icon)))
     application.setQuitOnLastWindowClosed(False)
     application.setStyleSheet(STYLESHEET)
     window = MainWindow(paths, settings, database, logger)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+- Rebuilt the desktop interface around a centralized premium dark-crimson design system with reusable cards, buttons, badges, empty states, progress strips and locally rendered line icons.
+- Redesigned the sidebar, topbar and Dashboard with real persisted activity, system overview values, compact workflow actions and data-backed sparklines.
+- Reorganized the Upload Generator into Source Configuration, Batch Actions and Upload Control cards and added a richer selected-video inspector.
+- Added status badges, real thumbnail filenames and miniatures, per-row progress bars and a visible upload cancellation control.
+- Added preset signatures to queue items so legacy descriptions and automatic tag lists are synchronized with the currently selected preset before validation or upload.
+- Preserves explicitly edited title, description and tag fields while refreshing other stale preset-derived metadata.
+- Rebuilt the Thumbnail Generator as a two-column 1920×1080 workspace with grouped controls, full 16:9 live preview and centered 1080×1080 guide.
+- Redesigned Presets, Schedule, History, Logs and Settings with consistent toolbars, cards, toggles, status presentation and empty states.
+- Added a persistent activity-event database migration without changing existing upload history.
+- Added a new local Plug-plus-Upload SVG, PNG and multi-resolution Windows ICO for the app, EXE, installer, shortcuts, tray and About panel.
+
 ## 1.0.4
 
 - Added `youtube.readonly` alongside `youtube.upload` so the authorized channel can be read with `channels.list(mine=True)`.
