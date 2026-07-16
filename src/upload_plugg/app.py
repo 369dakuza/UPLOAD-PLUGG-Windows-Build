@@ -18,6 +18,17 @@ from .ui.theme import STYLESHEET
 def main() -> int:
     paths = AppPaths.discover().ensure()
     logger = configure_logging(paths)
+
+    def report_unhandled_exception(kind, value, traceback) -> None:
+        logger.critical(
+            "Unhandled application exception",
+            exc_info=(kind, value, traceback),
+        )
+        sys.__excepthook__(kind, value, traceback)
+
+    # PySide routes exceptions raised by button slots through sys.excepthook.
+    # Recording them turns a silent-looking crash into an actionable log entry.
+    sys.excepthook = report_unhandled_exception
     settings = SettingsStore(paths)
     settings.load()
     database = Database(paths)
@@ -29,7 +40,9 @@ def main() -> int:
     icon = resource_root / "resources" / "upload_plugg.ico"
     if icon.exists():
         application.setWindowIcon(QIcon(str(icon)))
-    application.setQuitOnLastWindowClosed(False)
+    # Closing the main window means exiting the application. The former tray-only
+    # behaviour left Python and Qt worker threads running after the user clicked X.
+    application.setQuitOnLastWindowClosed(True)
     application.setStyleSheet(STYLESHEET)
     window = MainWindow(paths, settings, database, logger)
     window.show()

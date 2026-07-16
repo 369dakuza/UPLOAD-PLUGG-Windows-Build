@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
@@ -164,6 +164,8 @@ class StatCard(QFrame):
 
 
 class ProgressStrip(QFrame):
+    cancel_requested = Signal()
+
     def __init__(self):
         super().__init__()
         self.setObjectName("progressStrip")
@@ -178,12 +180,17 @@ class ProgressStrip(QFrame):
         self.bar.setRange(0, 100)
         self.percent = QLabel("")
         self.percent.setObjectName("progressPercent")
+        self.cancel_button = ActionButton("Stop", "danger", "stop")
+        self.cancel_button.setFixedHeight(30)
+        self.cancel_button.clicked.connect(self.cancel_requested.emit)
+        self.cancel_button.hide()
         layout.addWidget(self.label)
         layout.addWidget(self.bar, 1)
         layout.addWidget(self.percent)
+        layout.addWidget(self.cancel_button)
         self.hide()
 
-    def start(self, label: str, determinate: bool = False) -> None:
+    def start(self, label: str, determinate: bool = False, cancellable: bool = False) -> None:
         self.setProperty("state", "running")
         self.style().unpolish(self)
         self.style().polish(self)
@@ -195,6 +202,9 @@ class ProgressStrip(QFrame):
         else:
             self.bar.setRange(0, 0)
             self.percent.clear()
+        self.cancel_button.setVisible(cancellable)
+        self.cancel_button.setEnabled(cancellable)
+        self.cancel_button.setText("Stop")
         self.show()
 
     def update_progress(self, current: int, total: int) -> None:
@@ -213,3 +223,4 @@ class ProgressStrip(QFrame):
         self.bar.setRange(0, 100)
         self.bar.setValue(100 if success else 0)
         self.percent.setText("100%" if success else "")
+        self.cancel_button.hide()

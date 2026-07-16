@@ -7,42 +7,41 @@ root = Path(__file__).resolve().parents[1]
 size = 1024
 base = Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
-# A subtle pre-rendered crimson halo is efficient at runtime and remains outside
-# the high-contrast small-size glyph.
+# A pre-rendered crimson halo stays visible in the title bar, taskbar and the
+# in-app brand badge without relying on platform-specific effects.
 glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
 glow_draw = ImageDraw.Draw(glow)
-glow_draw.rounded_rectangle(
-    (102, 102, 922, 922),
-    radius=205,
+glow_draw.ellipse(
+    (112, 112, 912, 912),
     outline=(227, 24, 55, 165),
-    width=34,
+    width=44,
 )
-glow = glow.filter(ImageFilter.GaussianBlur(54))
+glow = glow.filter(ImageFilter.GaussianBlur(62))
 base = Image.alpha_composite(base, glow)
 
 draw = ImageDraw.Draw(base)
-draw.rounded_rectangle(
-    (80, 80, 944, 944),
-    radius=210,
+draw.ellipse(
+    (76, 76, 948, 948),
     fill=(10, 13, 17, 255),
-    outline=(38, 45, 55, 255),
-    width=24,
+    outline=(227, 24, 55, 255),
+    width=34,
 )
+draw.ellipse((116, 116, 908, 908), outline=(45, 52, 63, 255), width=15)
 
 white = (244, 246, 248, 255)
 red = (227, 24, 55, 255)
-width = 72
 
-# Plug body and prongs.
-draw.line((330, 454, 330, 574), fill=white, width=width)
-draw.line((694, 454, 694, 574), fill=white, width=width)
-draw.arc((330, 490, 694, 790), start=0, end=180, fill=white, width=width)
+# An unmistakable plug: rounded body, shoulder and two downward pins.
+draw.rounded_rectangle((288, 468, 736, 710), radius=82, outline=white, width=68)
+draw.line((368, 696, 368, 838), fill=white, width=68)
+draw.line((656, 696, 656, 838), fill=white, width=68)
+draw.line((336, 596, 688, 596), fill=white, width=42)
 
-# The upload arrow becomes the electrical connection through the plug.
-draw.line((512, 704, 512, 244), fill=red, width=width)
-draw.line((512, 244, 368, 388), fill=red, width=width)
-draw.line((512, 244, 656, 388), fill=red, width=width)
-draw.line((512, 774, 512, 864), fill=red, width=width)
+# The crimson upload arrow rises directly out of the plug body.
+arrow_width = 78
+draw.line((512, 620, 512, 248), fill=red, width=arrow_width)
+draw.line((512, 248, 356, 404), fill=red, width=arrow_width)
+draw.line((512, 248, 668, 404), fill=red, width=arrow_width)
 
 resources = root / "resources"
 resources.mkdir(parents=True, exist_ok=True)

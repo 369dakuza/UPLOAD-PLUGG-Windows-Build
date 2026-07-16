@@ -1,5 +1,5 @@
 #define MyAppName "UPLOAD PLUGG"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "Dakuza"
 #define MyAppExeName "UPLOAD PLUGG.exe"
 
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\UPLOAD PLUGG
 DefaultGroupName=UPLOAD PLUGG
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=UPLOAD_PLUGG_1.1.0_Update
+OutputBaseFilename=UPLOAD_PLUGG_1.1.1_Update
 SetupIconFile=..\resources\upload_plugg.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName=UPLOAD PLUGG
@@ -28,7 +28,7 @@ RestartApplications=no
 VersionInfoCompany=Dakuza
 VersionInfoDescription=UPLOAD PLUGG Installer
 VersionInfoProductName=UPLOAD PLUGG
-VersionInfoProductVersion=1.1.0
+VersionInfoProductVersion=1.1.1
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -40,8 +40,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "..\dist\UPLOAD PLUGG\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\UPLOAD PLUGG"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\UPLOAD PLUGG"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\UPLOAD PLUGG"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\UPLOAD PLUGG"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch UPLOAD PLUGG"; Flags: nowait postinstall skipifsilent

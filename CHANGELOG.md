@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- Made MP4 folder scanning cancellable and resilient to files that are moved, locked or removed while Windows is enumerating the folder.
+- Reconciles every successful scan with the current folder snapshot: missing files leave the queue, new files are added and manual metadata for unchanged files is preserved.
+- Added Stop Scan, Remove Selected, Clear Queue, multi-row selection and Delete-key queue controls; source MP4 files are never deleted.
+- Added cooperative cancellation to upload fingerprint generation and a global stop control for cancellable background tasks.
+- Closing the main window now stops uploads, thumbnail batches and worker threads before Qt exits instead of leaving the application process running in the tray.
+- Hardened worker ownership and cleanup to prevent live QThreads from being destroyed during shutdown.
+- Added a visible crimson glow around the sidebar brand and replaced the ambiguous legacy icon with a circular plug-and-upload badge across the app, EXE, installer and shortcuts.
+- Added regression tests for cancellation, queue reconciliation, stale-item removal, manual metadata preservation and changed-file reset.
+
 ## 1.1.0
 
 - Rebuilt the desktop interface around a centralized premium dark-crimson design system with reusable cards, buttons, badges, empty states, progress strips and locally rendered line icons.

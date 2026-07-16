@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QSize, QThread, QTimer, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
@@ -81,6 +83,8 @@ class MainWindow(QMainWindow):
         self.page_animation: QPropertyAnimation | None = None
         self.nav_animation: QPropertyAnimation | None = None
         self.generated_thumbnail_count = 0
+        self._shutting_down = False
+        self._shutdown_logged = False
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setMinimumSize(1120, 700)
         self.resize(
@@ -113,16 +117,33 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(15, 18, 15, 14)
-        brand = QHBoxLayout()
-        brand.setSpacing(6)
+        brand_widget = QFrame()
+        brand_widget.setObjectName("brandWidget")
+        brand = QHBoxLayout(brand_widget)
+        brand.setContentsMargins(1, 1, 1, 1)
+        brand.setSpacing(9)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(self.windowIcon().pixmap(44, 44))
+        brand_icon.setFixedSize(46, 46)
+        brand_icon.setAlignment(Qt.AlignCenter)
+        brand_words = QVBoxLayout()
+        brand_words.setContentsMargins(0, 0, 0, 0)
+        brand_words.setSpacing(-2)
         logo_upload = QLabel("UPLOAD")
         logo_upload.setObjectName("brandUpload")
         logo_plugg = QLabel("PLUGG")
         logo_plugg.setObjectName("brandPlugg")
-        brand.addWidget(logo_upload)
-        brand.addWidget(logo_plugg)
+        brand_words.addWidget(logo_upload)
+        brand_words.addWidget(logo_plugg)
+        brand.addWidget(brand_icon)
+        brand.addLayout(brand_words)
         brand.addStretch()
-        sidebar_layout.addLayout(brand)
+        glow = QGraphicsDropShadowEffect(brand_widget)
+        glow.setBlurRadius(28)
+        glow.setColor(QColor(227, 24, 55, 210))
+        glow.setOffset(0, 0)
+        brand_widget.setGraphicsEffect(glow)
+        sidebar_layout.addWidget(brand_widget)
         tag = QLabel("HIGH-SPEED CREATOR WORKFLOW")
         tag.setObjectName("brandTag")
         sidebar_layout.addWidget(tag)
@@ -169,6 +190,7 @@ class MainWindow(QMainWindow):
         content.addWidget(topbar)
 
         self.progress_strip = ProgressStrip()
+        self.progress_strip.cancel_requested.connect(self.cancel_active_operation)
         content.addWidget(self.progress_strip)
 
         self.stack = QStackedWidget()
@@ -208,6 +230,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_page.request_task.connect(self.run_task)
         self.upload_page.request_upload.connect(self.start_upload_queue)
         self.upload_page.request_cancel.connect(self.cancel_queue)
+        self.upload_page.request_task_cancel.connect(self.cancel_background_tasks)
         self.upload_page.queue_changed.connect(self.refresh_dashboard)
         self.thumbnail_page.generated.connect(self.thumbnails_generated)
         self.presets_page.presets_changed.connect(self.upload_page.presets_updated)
@@ -283,12 +306,19 @@ class MainWindow(QMainWindow):
         animation.start()
 
     def run_task(self, function: object, args: object, callbacks: object) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         thread = QThread(self)
         positional = tuple(args) if isinstance(args, (tuple, list)) else ()
-        worker = FunctionWorker(function, *positional)
+        cancellable = bool(callbacks.get("cancellable")) if isinstance(callbacks, dict) else False
+        worker = FunctionWorker(function, *positional, cancellable=cancellable)
         task_label = callbacks.get("label", "") if isinstance(callbacks, dict) else ""
         if task_label:
-            self.progress_strip.start(str(task_label), bool(callbacks.get("progress")))
+            self.progress_strip.start(
+                str(task_label),
+                bool(callbacks.get("progress")),
+                cancellable,
+            )
         progress_callback = callbacks.get("progress") if isinstance(callbacks, dict) else None
         if callable(progress_callback):
             worker.progress.connect(progress_callback)
@@ -298,17 +328,23 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
         done = callbacks.get("done") if isinstance(callbacks, dict) else None
         failed = callbacks.get("failed") if isinstance(callbacks, dict) else None
+        cancelled = callbacks.get("cancelled") if isinstance(callbacks, dict) else None
         if callable(done):
             worker.finished.connect(done)
         if callable(failed):
             worker.failed.connect(failed)
+        if callable(cancelled):
+            worker.cancelled_signal.connect(cancelled)
         if task_label:
             worker.finished.connect(lambda _result, label=str(task_label): self._task_finished(label))
             worker.failed.connect(lambda message, label=str(task_label): self._task_failed(label, message))
+            worker.cancelled_signal.connect(lambda label=str(task_label): self._task_cancelled(label))
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
+        worker.cancelled_signal.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         worker.failed.connect(worker.deleteLater)
+        worker.cancelled_signal.connect(worker.deleteLater)
         # Release the strong worker reference before scheduling the QThread wrapper
         # for deletion. Keeping this order deterministic prevents a rare Windows
         # race where the dictionary retained an already-finished thread.
@@ -324,6 +360,27 @@ class MainWindow(QMainWindow):
     def _task_failed(self, label: str, _message: str) -> None:
         self.progress_strip.finish(f"{label} failed", False)
         QTimer.singleShot(2500, self.progress_strip.hide)
+
+    def _task_cancelled(self, label: str) -> None:
+        self.progress_strip.finish(f"{label} stopped", False)
+        QTimer.singleShot(1600, self.progress_strip.hide)
+
+    def cancel_background_tasks(self) -> None:
+        stopped = False
+        for worker in list(self.threads.values()):
+            if worker.cancellable:
+                worker.cancel()
+                stopped = True
+        if stopped:
+            self.progress_strip.label.setText("Stopping after the current file…")
+            self.progress_strip.cancel_button.setEnabled(False)
+            self.progress_strip.cancel_button.setText("Stopping…")
+
+    def cancel_active_operation(self) -> None:
+        if self.upload_thread and self.upload_thread.isRunning():
+            self.cancel_queue()
+        else:
+            self.cancel_background_tasks()
 
     def connect_channel(self) -> None:
         if self.upload_thread and self.upload_thread.isRunning():
@@ -452,11 +509,13 @@ class MainWindow(QMainWindow):
         self.upload_worker.failed.connect(lambda message: QMessageBox.critical(self, APP_NAME, message))
         self.upload_worker.queue_finished.connect(self.queue_finished)
         self.upload_worker.queue_finished.connect(self.upload_thread.quit)
-        self.upload_thread.finished.connect(self.upload_worker.deleteLater)
+        self.upload_worker.queue_finished.connect(self.upload_worker.deleteLater)
+        self.upload_thread.finished.connect(self._upload_thread_finished)
+        self.upload_thread.finished.connect(self.upload_thread.deleteLater)
         self.upload_thread.start()
         self.upload_page.upload_button.setEnabled(False)
         self.upload_page.cancel_upload_button.setEnabled(True)
-        self.progress_strip.start(f"Uploading batch · {len(items)} video(s)", True)
+        self.progress_strip.start(f"Uploading batch · {len(items)} video(s)", True, True)
         self.navigate(1)
         self.tray.showMessage(APP_NAME, f"Upload queue started with {len(items)} video(s).", QSystemTrayIcon.Information)
 
@@ -476,9 +535,15 @@ class MainWindow(QMainWindow):
         )
         self.history_page.refresh()
         self.refresh_dashboard()
+        if self._shutting_down:
+            return
         message = f"Batch finished: {completed} completed, {failed} failed."
         self.tray.showMessage(APP_NAME, message, QSystemTrayIcon.Information if failed == 0 else QSystemTrayIcon.Warning)
         QMessageBox.information(self, APP_NAME, message + "\n\nEnd screens remain pending in YouTube Studio.")
+
+    def _upload_thread_finished(self) -> None:
+        self.upload_thread = None
+        self.upload_worker = None
 
     def upload_progress(self, item_id: str, percent: int, stage: str) -> None:
         selected = [item for item in self.upload_page.items if item.selected]
@@ -499,9 +564,16 @@ class MainWindow(QMainWindow):
         if self.upload_worker:
             self.upload_worker.resume()
 
-    def cancel_queue(self) -> None:
-        if self.upload_worker and QMessageBox.question(self, APP_NAME, "Cancel the current upload queue?") == QMessageBox.Yes:
-            self.upload_worker.cancel()
+    def cancel_queue(self, prompt: bool = True) -> None:
+        if not self.upload_worker:
+            return
+        if prompt and QMessageBox.question(
+            self, APP_NAME, "Cancel the current upload queue?"
+        ) != QMessageBox.Yes:
+            return
+        self.upload_worker.cancel()
+        self.progress_strip.label.setText("Stopping upload after the current request…")
+        self.progress_strip.cancel_button.setEnabled(False)
 
     def refresh_internet(self) -> None:
         if self.internet_check_running:
@@ -510,7 +582,11 @@ class MainWindow(QMainWindow):
         self.run_task(
             internet_available,
             (),
-            {"done": self.internet_done, "failed": lambda _message: self.internet_done(False)},
+            {
+                "done": self.internet_done,
+                "failed": lambda _message: self.internet_done(False),
+                "cancellable": True,
+            },
         )
 
     def internet_done(self, online: bool) -> None:
@@ -542,22 +618,62 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def request_exit(self) -> None:
-        if self.upload_thread and self.upload_thread.isRunning():
-            if QMessageBox.question(self, APP_NAME, "An upload is active. Cancel it and exit?") != QMessageBox.Yes:
-                return
-            self.cancel_queue()
-            return
-        QApplication.instance().quit()
+        self.close()
+
+    def shutdown(self, timeout_ms: int = 6000) -> bool:
+        """Cancel active work and wait briefly so QThreads are never destroyed live."""
+        self._shutting_down = True
+        if hasattr(self, "internet_timer"):
+            self.internet_timer.stop()
+        self.thumbnail_page.stop_generation()
+        if self.upload_worker is not None:
+            self.cancel_queue(prompt=False)
+        for thread, worker in list(self.threads.items()):
+            worker.cancel()
+            thread.requestInterruption()
+            thread.quit()
+        if self.upload_thread is not None:
+            self.upload_thread.requestInterruption()
+            self.upload_thread.quit()
+
+        deadline = time.monotonic() + max(0, timeout_ms) / 1000
+        while time.monotonic() < deadline:
+            active = [thread for thread in self.threads if thread.isRunning()]
+            upload_active = bool(self.upload_thread and self.upload_thread.isRunning())
+            if not active and not upload_active:
+                return True
+            QApplication.processEvents()
+            time.sleep(0.02)
+        active = [thread for thread in self.threads if thread.isRunning()]
+        upload_active = bool(self.upload_thread and self.upload_thread.isRunning())
+        if active or upload_active:
+            self.logger.warning(
+                "Waiting for %s background task(s) to stop before exit",
+                len(active) + int(upload_active),
+            )
+            return False
+        return True
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.settings.data["window"]["width"] = self.width()
         self.settings.data["window"]["height"] = self.height()
         self.settings.save()
-        if self.upload_thread and self.upload_thread.isRunning():
+        if not self._shutting_down and self.upload_thread and self.upload_thread.isRunning():
+            if QMessageBox.question(
+                self,
+                APP_NAME,
+                "An upload is active. Stop it and close UPLOAD PLUGG?",
+            ) != QMessageBox.Yes:
+                event.ignore()
+                return
+        if not self.shutdown(6000 if not self._shutting_down else 0):
             event.ignore()
-            self.hide()
-            self.tray.showMessage(APP_NAME, "UPLOAD PLUGG is still uploading in the system tray.", QSystemTrayIcon.Information)
+            self.setEnabled(False)
+            self.progress_strip.start("Stopping background work safely…", False, False)
+            QTimer.singleShot(250, self.close)
             return
-        self.logger.info("%s shutdown", APP_NAME)
+        if not self._shutdown_logged:
+            self.logger.info("%s shutdown", APP_NAME)
+            self._shutdown_logged = True
         self.tray.hide()
         event.accept()

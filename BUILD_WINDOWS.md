@@ -22,8 +22,8 @@ The script creates `.venv`, installs pinned dependency ranges, generates the ico
 Outputs:
 
 - `dist\UPLOAD PLUGG\UPLOAD PLUGG.exe` — standalone directory build
-- `dist\UPLOAD_PLUGG_1.1.0_Portable.zip` — portable package
-- `dist\UPLOAD_PLUGG_1.1.0_Update.exe` — installer and in-place updater
+- `dist\UPLOAD_PLUGG_1.1.1_Portable.zip` — portable package
+- `dist\UPLOAD_PLUGG_1.1.1_Update.exe` — installer and in-place updater
 
 To omit Inno Setup while testing the executable:
 

@@ -1,3 +1,4 @@
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -21,6 +22,13 @@ class ConnectivityTests(unittest.TestCase):
         ):
             connect.return_value.__enter__.return_value = object()
             self.assertTrue(internet_available())
+
+    def test_cancelled_probe_stops_before_network_access(self):
+        cancelled = threading.Event()
+        cancelled.set()
+        with patch("upload_plugg.services.connectivity._https_reachable") as probe:
+            self.assertFalse(internet_available(cancelled=cancelled))
+        probe.assert_not_called()
 
 
 if __name__ == "__main__":

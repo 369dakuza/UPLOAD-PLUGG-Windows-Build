@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 import webbrowser
@@ -32,7 +31,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -56,9 +54,8 @@ from PySide6.QtWidgets import (
 from .. import APP_NAME, APP_VERSION, CREATOR_CREDIT
 from ..constants import MAX_BATCH_SIZE, YOUTUBE_TAGS_LIMIT
 from ..core.dry_run import export_dry_run
-from ..core.filename_parser import parse_filename
 from ..core.random_pool import assign_without_repeats, image_pool
-from ..core.scanner import scan_videos, sha256_file
+from ..core.scanner import reconcile_scan, scan_videos, sha256_file
 from ..core.scheduling import ScheduleError, calculate_schedule
 from ..core.templates import (
     description_hashtags,
@@ -193,18 +190,29 @@ class AspectPreviewLabel(QLabel):
         super().setPixmap(fitted)
 
 
-def hash_upload_items(items: list[UploadItem]) -> list[UploadItem]:
-    for item in items:
+def hash_upload_items(
+    items: list[UploadItem],
+    cancelled: threading.Event | None = None,
+    progress: object | None = None,
+) -> list[UploadItem]:
+    for index, item in enumerate(items, start=1):
+        if cancelled is not None and cancelled.is_set():
+            return []
         source = Path(item.source_path)
         stat = source.stat()
         item.file_size = stat.st_size
         item.modified_ns = stat.st_mtime_ns
-        item.file_hash = sha256_file(source)
+        item.file_hash = sha256_file(source, cancelled=cancelled)
+        if cancelled is not None and cancelled.is_set():
+            return []
+        if callable(progress):
+            progress(index, len(items))
     return items
 
 
 class QueueTableWidget(QTableWidget):
     rows_reordered = Signal(int, int)
+    delete_requested = Signal()
 
     def dropEvent(self, event) -> None:
         source = self.currentRow()
@@ -216,6 +224,13 @@ class QueueTableWidget(QTableWidget):
             event.accept()
         else:
             event.ignore()
+
+    def keyPressEvent(self, event: object) -> None:
+        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            self.delete_requested.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class DashboardPage(QWidget):
@@ -407,6 +422,7 @@ class UploadGeneratorPage(QWidget):
     request_task = Signal(object, object, object)
     request_upload = Signal(object, object)
     request_cancel = Signal()
+    request_task_cancel = Signal()
     queue_changed = Signal()
 
     COLUMNS = [
@@ -422,6 +438,7 @@ class UploadGeneratorPage(QWidget):
         self.items: list[UploadItem] = database.load_queue()
         self._populating = False
         self._initializing = True
+        self.scan_active = False
         root, _ = page_header("Upload Generator", "Prepare, validate and upload up to 30 finished MP4 videos")
 
         configuration_row = QHBoxLayout()
@@ -463,8 +480,11 @@ class UploadGeneratorPage(QWidget):
         actions = SectionCard("Batch Actions", "Prepare and verify the selected videos", "preset")
         action_grid = QGridLayout()
         action_grid.setSpacing(SPACE_2)
-        scan = ActionButton("Scan Folder", "secondary", "search")
-        scan.clicked.connect(self.scan)
+        self.scan_button = ActionButton("Scan Folder", "secondary", "search")
+        self.scan_button.clicked.connect(self.scan)
+        self.stop_scan_button = ActionButton("Stop Scan", "danger", "stop")
+        self.stop_scan_button.setEnabled(False)
+        self.stop_scan_button.clicked.connect(self.request_task_cancel.emit)
         metadata = ActionButton("Generate Metadata", "secondary", "preset")
         metadata.clicked.connect(self.generate_all)
         random_button = ActionButton("Random Thumbnails", "secondary", "image")
@@ -475,7 +495,10 @@ class UploadGeneratorPage(QWidget):
         validate_button.clicked.connect(self.validate)
         dry_button = ActionButton("Run Dry Test", "secondary", "logs")
         dry_button.clicked.connect(self.dry_run)
-        for index, button in enumerate((scan, metadata, random_button, validate_button, schedule_button, dry_button)):
+        for index, button in enumerate((
+            self.scan_button, self.stop_scan_button, metadata, random_button,
+            validate_button, schedule_button, dry_button,
+        )):
             action_grid.addWidget(button, index // 2, index % 2)
         actions.body.addLayout(action_grid)
         configuration_row.addWidget(actions, 3)
@@ -520,6 +543,19 @@ class UploadGeneratorPage(QWidget):
         self.summary = QLabel("Ready to scan a folder.")
         self.summary.setObjectName("muted")
         root.addWidget(self.summary)
+        queue_tools = QHBoxLayout()
+        queue_tools.setSpacing(SPACE_2)
+        self.remove_selected_button = ActionButton("Remove Selected", "secondary", "trash")
+        self.remove_selected_button.clicked.connect(self.remove_selected_rows)
+        self.clear_queue_button = ActionButton("Clear Queue", "danger", "trash")
+        self.clear_queue_button.clicked.connect(self.clear_queue)
+        queue_hint = QLabel("Uncheck Use to skip an upload · select one or more rows and press Delete to remove them")
+        queue_hint.setObjectName("caption")
+        queue_tools.addWidget(self.remove_selected_button)
+        queue_tools.addWidget(self.clear_queue_button)
+        queue_tools.addWidget(queue_hint)
+        queue_tools.addStretch()
+        root.addLayout(queue_tools)
         self.queue_empty = EmptyState(
             "No upload batch loaded",
             "Select a video folder and scan it to build the queue.",
@@ -530,6 +566,7 @@ class UploadGeneratorPage(QWidget):
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setDragDropMode(QAbstractItemView.InternalMove)
         self.table.setDefaultDropAction(Qt.MoveAction)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -540,6 +577,7 @@ class UploadGeneratorPage(QWidget):
         self.table.cellChanged.connect(self.cell_changed)
         self.table.currentCellChanged.connect(self.show_details)
         self.table.rows_reordered.connect(self.reorder_rows)
+        self.table.delete_requested.connect(self.remove_selected_rows)
         self.table.hide()
         root.addWidget(self.table, 1)
 
@@ -636,24 +674,69 @@ class UploadGeneratorPage(QWidget):
             self.settings.save()
 
     def scan(self) -> None:
+        if self.scan_active:
+            return
         modes = ["natural", "name", "name_desc", "created_oldest", "created_newest", "modified_oldest", "modified_newest", "manual"]
+        self.scan_active = True
+        self.scan_button.setEnabled(False)
+        self.stop_scan_button.setEnabled(True)
         self.summary.setText("Scanning MP4 files…")
         self.request_task.emit(
             scan_videos,
             (self.folder.text(), modes[self.sorting.currentIndex()], self.batch.value()),
-            {"done": self.scan_done, "failed": self.task_failed, "label": "Scanning folder"},
+            {
+                "done": self.scan_done,
+                "failed": self.scan_failed,
+                "cancelled": self.scan_cancelled,
+                "progress": self.scan_progress,
+                "cancellable": True,
+                "label": "Scanning folder",
+            },
         )
 
     def scan_done(self, items: list[UploadItem]) -> None:
-        self.items = items
+        old_count = len(self.items)
+        self.items, added, updated, removed = reconcile_scan(self.items, items)
+        preset = self.current_preset()
+        for item in self.items:
+            synchronize_metadata(item, preset, preserve_manual=True)
+        self.persist()
+        self.populate()
+        self._finish_scan_state()
         if items:
-            self.generate_all()
             self.database.add_activity(
-                "scan", "Folder scanned", f"{len(items)} video(s) found", "success"
+                "scan",
+                "Folder scanned and queue refreshed",
+                f"{len(items)} found · {added} added · {updated} changed · {removed} removed",
+                "success",
             )
-        self.summary.setText(f"{len(items)} of {self.batch.value()} requested videos found")
+        self.summary.setText(
+            f"Queue refreshed · {len(items)} found · {added} added · "
+            f"{updated} changed · {removed} removed"
+        )
         if not items:
-            QMessageBox.information(self, APP_NAME, "No supported MP4 files were found in this folder.")
+            detail = "The previous queue was cleared." if old_count else ""
+            QMessageBox.information(
+                self,
+                APP_NAME,
+                "No supported MP4 files were found in this folder. " + detail,
+            )
+
+    def scan_progress(self, current: int, total: int) -> None:
+        self.summary.setText(f"Scanning MP4 files… {current}/{max(total, 1)}")
+
+    def scan_cancelled(self) -> None:
+        self._finish_scan_state()
+        self.summary.setText("Folder scan stopped. The existing queue was not changed.")
+
+    def scan_failed(self, message: str) -> None:
+        self._finish_scan_state()
+        self.task_failed(message)
+
+    def _finish_scan_state(self) -> None:
+        self.scan_active = False
+        self.scan_button.setEnabled(True)
+        self.stop_scan_button.setEnabled(False)
 
     def generate_all(self) -> None:
         if not self.items:
@@ -771,6 +854,11 @@ class UploadGeneratorPage(QWidget):
                 {
                     "done": lambda result: self.finish_start_uploads(result, warnings),
                     "failed": self.task_failed,
+                    "cancelled": lambda: self.summary.setText("Upload preparation stopped."),
+                    "progress": lambda current, total: self.summary.setText(
+                        f"Preparing upload fingerprints… {current}/{max(total, 1)}"
+                    ),
+                    "cancellable": True,
                     "label": "Preparing upload fingerprints",
                 },
             )
@@ -920,6 +1008,56 @@ class UploadGeneratorPage(QWidget):
         self.persist()
         self.populate()
         self.table.selectRow(target)
+
+    def remove_selected_rows(self) -> None:
+        rows = sorted(
+            {index.row() for index in self.table.selectionModel().selectedRows()},
+            reverse=True,
+        )
+        if not rows and 0 <= self.table.currentRow() < len(self.items):
+            rows = [self.table.currentRow()]
+        if not rows:
+            QMessageBox.information(self, APP_NAME, "Select one or more queue rows first.")
+            return
+        for row in rows:
+            if 0 <= row < len(self.items):
+                self.items.pop(row)
+        self.persist()
+        self.populate()
+        self.summary.setText(f"Removed {len(rows)} video(s) from the queue.")
+        if not self.items:
+            self.clear_details()
+
+    def clear_queue(self, confirm: bool = True) -> None:
+        if not self.items:
+            return
+        if confirm and QMessageBox.question(
+            self,
+            APP_NAME,
+            f"Remove all {len(self.items)} videos from the queue?\n\nThe MP4 files will not be deleted.",
+        ) != QMessageBox.Yes:
+            return
+        count = len(self.items)
+        self.items.clear()
+        self.persist()
+        self.populate()
+        self.clear_details()
+        self.summary.setText(f"Queue cleared · {count} video(s) removed. Source files were not deleted.")
+
+    def clear_details(self) -> None:
+        self.detail_description.blockSignals(True)
+        self.detail_description.clear()
+        self.detail_description.blockSignals(False)
+        self.detail_tags.blockSignals(True)
+        self.detail_tags.clear()
+        self.detail_tags.blockSignals(False)
+        self.detail_title.setText("No video selected")
+        self.detail_credit.setText("Producer credits")
+        self.detail_preset.setText("Preset · —")
+        self.detail_schedule.setText("Schedule · Not scheduled")
+        self.detail_path.clear()
+        self.detail_thumbnail.clear()
+        self.detail_thumbnail.setText("▧\nNo custom thumbnail assigned")
 
     def show_details(self, row: int, _column: int, *_: int) -> None:
         if row < 0 or row >= len(self.items):

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+import inspect
 import threading
 from datetime import datetime
-from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -19,20 +19,45 @@ from ..services.youtube import UploadCancelled, YouTubeService
 class FunctionWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
+    cancelled_signal = Signal()
     progress = Signal(int, int)
 
-    def __init__(self, function, *args, **kwargs):
+    def __init__(self, function, *args, cancellable: bool = False, **kwargs):
         super().__init__()
         self.function = function
         self.args = args
         self.kwargs = kwargs
+        self.cancellable = cancellable
+        self.cancelled = threading.Event()
 
     @Slot()
     def run(self) -> None:
         try:
-            self.finished.emit(self.function(*self.args, **self.kwargs))
+            if self.cancelled.is_set():
+                self.cancelled_signal.emit()
+                return
+            signature = inspect.signature(self.function)
+            bound = signature.bind_partial(*self.args, **self.kwargs)
+            if (
+                self.cancellable
+                and "cancelled" in signature.parameters
+                and "cancelled" not in bound.arguments
+            ):
+                self.kwargs["cancelled"] = self.cancelled
+            result = self.function(*self.args, **self.kwargs)
+            if self.cancelled.is_set():
+                self.cancelled_signal.emit()
+            else:
+                self.finished.emit(result)
         except Exception as exc:
-            self.failed.emit(str(exc))
+            if self.cancelled.is_set():
+                self.cancelled_signal.emit()
+            else:
+                self.failed.emit(str(exc))
+
+    @Slot()
+    def cancel(self) -> None:
+        self.cancelled.set()
 
 
 class UploadQueueWorker(QObject):
@@ -88,7 +113,12 @@ class UploadQueueWorker(QObject):
                     item.upload_status = "Uploading"
                     if not item.file_hash:
                         self.item_progress.emit(item.id, 0, "Hashing")
-                        item.file_hash = sha256_file(item.source_path)
+                        item.file_hash = sha256_file(
+                            item.source_path,
+                            cancelled=self.cancelled,
+                        )
+                        if self.cancelled.is_set():
+                            raise UploadCancelled("Upload stopped during file hashing.")
                     thumbnail = ""
                     if item.thumbnail_path:
                         self.item_progress.emit(item.id, 0, "Preparing Thumbnail")
